@@ -1,0 +1,840 @@
+<!--
+  ============================================================
+  templates/index.html
+  עמוד יחיד (SPA פשוט) למערכת ניהול קליניקת הלייזר.
+
+  שלב זה (3) בונה רק מבנה ועיצוב - בלי שום לוגיקה.
+  כל הנתונים בטבלאות/תגיות עדיין ריקים או עם placeholder,
+  וכל הכפתורים לא מחוברים לשום פעולה. שלב 4 (static/app.js)
+  יתפוס את כל אלמנטי ה-DOM לפי ה-id וה-data-* שכבר מוגדרים כאן
+  ויחבר אותם ל-API שנבנה בשלב 2 (app.py).
+
+  מבנה כללי:
+  - <nav class="sidebar">  - ניווט צדדי קבוע בין 6 המסכים
+  - <main>                 - מכיל את 6 ה-<section class="screen">,
+                             רק אחד גלוי בכל רגע (מחלקת is-active)
+  - מודלים (טפסי הוספה/עריכה) ודיאלוג אישור - בסוף הגוף,
+    מחוץ ל-main, כי הם "צפים" מעל כל התוכן
+  - toast-container - להודעות הצלחה/שגיאה חולפות
+  ============================================================
+-->
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>מערכת ניהול קליניקת לייזר</title>
+
+    <!-- קובץ העיצוב היחיד - בלי CDN, הכל מקומי -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+    <div class="app-shell">
+
+        <!-- ============================================================
+             ניווט צדדי - קבוע, מציג את 6 המסכים
+             כל כפתור מסומן ב-data-target כדי שב-שלב 4 JS ידע
+             איזה מסך להציג בלחיצה, בלי לשנות את ה-HTML הזה
+             ============================================================ -->
+        <nav class="sidebar" aria-label="ניווט ראשי">
+            <div class="sidebar-brand">
+                <span class="sidebar-brand-icon">💎</span>
+                <div class="sidebar-brand-text">
+                    <strong>קליניקת לייזר</strong>
+                    <span>מערכת ניהול</span>
+                </div>
+            </div>
+
+            <ul class="sidebar-nav">
+                <li>
+                    <button type="button" class="nav-item is-active" data-target="dashboard">
+                        <span class="nav-icon" aria-hidden="true">🏠</span>
+                        <span class="nav-label">דשבורד</span>
+                    </button>
+                </li>
+                <li>
+                    <button type="button" class="nav-item" data-target="appointments">
+                        <span class="nav-icon" aria-hidden="true">📅</span>
+                        <span class="nav-label">תורים</span>
+                    </button>
+                </li>
+                <li>
+                    <button type="button" class="nav-item" data-target="clients">
+                        <span class="nav-icon" aria-hidden="true">👥</span>
+                        <span class="nav-label">לקוחות</span>
+                    </button>
+                </li>
+                <li>
+                    <button type="button" class="nav-item" data-target="treatments">
+                        <span class="nav-icon" aria-hidden="true">✨</span>
+                        <span class="nav-label">טיפולים</span>
+                    </button>
+                </li>
+                <li>
+                    <button type="button" class="nav-item" data-target="invoices">
+                        <span class="nav-icon" aria-hidden="true">🧾</span>
+                        <span class="nav-label">חשבוניות</span>
+                    </button>
+                </li>
+                <li>
+                    <button type="button" class="nav-item" data-target="leads">
+                        <span class="nav-icon" aria-hidden="true">🎯</span>
+                        <span class="nav-label">לידים</span>
+                    </button>
+                </li>
+            </ul>
+        </nav>
+
+        <!-- ============================================================
+             תוכן ראשי - 6 מסכים, רק אחד גלוי בכל רגע (is-active)
+             ============================================================ -->
+        <main class="main-content">
+
+            <!-- ==================== מסך 1: דשבורד ==================== -->
+            <section class="screen is-active" id="screen-dashboard" data-screen="dashboard">
+                <header class="screen-header">
+                    <div>
+                        <h1>דשבורד</h1>
+                        <p class="screen-subtitle">תמונת מצב יומית של הקליניקה</p>
+                    </div>
+                </header>
+
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon stat-icon-appointments" aria-hidden="true">📅</div>
+                        <div class="stat-body">
+                            <span class="stat-value" data-field="today-appointments-count">—</span>
+                            <span class="stat-label">תורים היום</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon stat-icon-clients" aria-hidden="true">👥</div>
+                        <div class="stat-body">
+                            <span class="stat-value" data-field="clients-count">—</span>
+                            <span class="stat-label">לקוחות רשומים</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon stat-icon-revenue" aria-hidden="true">💰</div>
+                        <div class="stat-body">
+                            <span class="stat-value" data-field="month-revenue">—</span>
+                            <span class="stat-label">הכנסות החודש</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon stat-icon-leads" aria-hidden="true">🎯</div>
+                        <div class="stat-body">
+                            <span class="stat-value" data-field="open-leads-count">—</span>
+                            <span class="stat-label">לידים פתוחים</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h2>תורים להיום</h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="loading-spinner" data-loading-for="today-appointments" hidden>
+                            <span class="spinner" aria-hidden="true"></span>
+                            <span>טוען נתונים...</span>
+                        </div>
+
+                        <div class="table-wrap">
+                            <table class="data-table" data-table="today-appointments">
+                                <thead>
+                                    <tr>
+                                        <th scope="col">שעה</th>
+                                        <th scope="col">לקוח</th>
+                                        <th scope="col">טיפול</th>
+                                        <th scope="col">סטטוס</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- ימולא ע"י JS בשלב 4 -->
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="empty-state" data-empty-for="today-appointments" hidden>
+                            <div class="empty-state-icon" aria-hidden="true">📭</div>
+                            <p class="empty-state-title">אין תורים היום</p>
+                            <p class="empty-state-text">כל התורים המתוכננים להיום יופיעו כאן</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ==================== מסך 2: תורים ==================== -->
+            <section class="screen" id="screen-appointments" data-screen="appointments">
+                <header class="screen-header">
+                    <div>
+                        <h1>תורים</h1>
+                        <p class="screen-subtitle">ניהול לוח התורים של הקליניקה</p>
+                    </div>
+                </header>
+
+                <div class="toolbar">
+                    <button type="button" class="btn btn-primary" id="btn-add-appointment">
+                        <span aria-hidden="true">+</span> הוספת תור
+                    </button>
+                    <div class="toolbar-spacer"></div>
+                </div>
+
+                <div class="card">
+                    <div class="card-body">
+                        <div class="loading-spinner" data-loading-for="appointments" hidden>
+                            <span class="spinner" aria-hidden="true"></span>
+                            <span>טוען תורים...</span>
+                        </div>
+
+                        <div class="table-wrap">
+                            <table class="data-table" data-table="appointments">
+                                <thead>
+                                    <tr>
+                                        <th scope="col">מס' תור</th>
+                                        <th scope="col">לקוח</th>
+                                        <th scope="col">טיפולים</th>
+                                        <th scope="col">עלות כוללת</th>
+                                        <th scope="col">משך כולל</th>
+                                        <th scope="col">תאריך</th>
+                                        <th scope="col">שעה</th>
+                                        <th scope="col">סטטוס</th>
+                                        <th scope="col">פעולות</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- ימולא ע"י JS בשלב 4 -->
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="empty-state" data-empty-for="appointments" hidden>
+                            <div class="empty-state-icon" aria-hidden="true">📅</div>
+                            <p class="empty-state-title">אין תורים עדיין</p>
+                            <p class="empty-state-text">לחצו על "הוספת תור" כדי לקבוע את התור הראשון</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ==================== מסך 3: לקוחות ==================== -->
+            <section class="screen" id="screen-clients" data-screen="clients">
+                <header class="screen-header">
+                    <div>
+                        <h1>לקוחות</h1>
+                        <p class="screen-subtitle">כרטיסי הלקוחות של הקליניקה</p>
+                    </div>
+                </header>
+
+                <div class="toolbar">
+                    <button type="button" class="btn btn-primary" id="btn-add-client">
+                        <span aria-hidden="true">+</span> הוספת לקוח
+                    </button>
+                    <div class="toolbar-spacer"></div>
+                    <input type="search" class="form-input toolbar-search" id="client-search"
+                           placeholder="חיפוש לפי שם או טלפון...">
+                </div>
+
+                <div class="card">
+                    <div class="card-body">
+                        <div class="loading-spinner" data-loading-for="clients" hidden>
+                            <span class="spinner" aria-hidden="true"></span>
+                            <span>טוען לקוחות...</span>
+                        </div>
+
+                        <div class="table-wrap">
+                            <table class="data-table" data-table="clients">
+                                <thead>
+                                    <tr>
+                                        <th scope="col">מזהה</th>
+                                        <th scope="col">שם מלא</th>
+                                        <th scope="col">טלפון</th>
+                                        <th scope="col">אימייל</th>
+                                        <th scope="col">כתובת</th>
+                                        <th scope="col">פעולות</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- ימולא ע"י JS בשלב 4 -->
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="empty-state" data-empty-for="clients" hidden>
+                            <div class="empty-state-icon" aria-hidden="true">👥</div>
+                            <p class="empty-state-title">אין לקוחות עדיין</p>
+                            <p class="empty-state-text">לחצו על "הוספת לקוח" כדי להוסיף את הלקוח הראשון</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ==================== מסך 4: טיפולים ==================== -->
+            <section class="screen" id="screen-treatments" data-screen="treatments">
+                <header class="screen-header">
+                    <div>
+                        <h1>קטלוג טיפולים</h1>
+                        <p class="screen-subtitle">סוגי הטיפולים שהקליניקה מציעה</p>
+                    </div>
+                </header>
+
+                <div class="toolbar">
+                    <button type="button" class="btn btn-primary" id="btn-add-treatment">
+                        <span aria-hidden="true">+</span> הוספת טיפול
+                    </button>
+                    <div class="toolbar-spacer"></div>
+                    <button type="button" class="btn btn-ghost" id="btn-seed-treatments">
+                        אתחול קטלוג ראשוני
+                    </button>
+                </div>
+
+                <div class="card">
+                    <div class="card-body">
+                        <div class="loading-spinner" data-loading-for="treatments" hidden>
+                            <span class="spinner" aria-hidden="true"></span>
+                            <span>טוען טיפולים...</span>
+                        </div>
+
+                        <div class="table-wrap">
+                            <table class="data-table" data-table="treatments">
+                                <thead>
+                                    <tr>
+                                        <th scope="col">מזהה</th>
+                                        <th scope="col">שם הטיפול</th>
+                                        <th scope="col">איזור</th>
+                                        <th scope="col">מחיר</th>
+                                        <th scope="col">משך (דק')</th>
+                                        <th scope="col">פעולות</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- ימולא ע"י JS בשלב 4 -->
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="empty-state" data-empty-for="treatments" hidden>
+                            <div class="empty-state-icon" aria-hidden="true">✨</div>
+                            <p class="empty-state-title">הקטלוג ריק</p>
+                            <p class="empty-state-text">אפשר להוסיף טיפול ידנית, או ללחוץ על "אתחול קטלוג ראשוני"</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ==================== מסך 5: חשבוניות ==================== -->
+            <section class="screen" id="screen-invoices" data-screen="invoices">
+                <header class="screen-header">
+                    <div>
+                        <h1>חשבוניות</h1>
+                        <p class="screen-subtitle">הפקה, מעקב וביטול חשבוניות מס</p>
+                    </div>
+                </header>
+
+                <div class="toolbar">
+                    <button type="button" class="btn btn-primary" id="btn-add-invoice">
+                        <span aria-hidden="true">+</span> הפקת חשבונית
+                    </button>
+                    <div class="toolbar-spacer"></div>
+                    <label class="toolbar-checkbox">
+                        <input type="checkbox" id="invoices-show-cancelled">
+                        הצג גם חשבוניות מבוטלות
+                    </label>
+                </div>
+
+                <div class="card">
+                    <div class="card-body">
+                        <div class="loading-spinner" data-loading-for="invoices" hidden>
+                            <span class="spinner" aria-hidden="true"></span>
+                            <span>טוען חשבוניות...</span>
+                        </div>
+
+                        <div class="table-wrap">
+                            <table class="data-table" data-table="invoices">
+                                <thead>
+                                    <tr>
+                                        <th scope="col">מס' חשבונית</th>
+                                        <th scope="col">לקוח</th>
+                                        <th scope="col">סכום</th>
+                                        <th scope="col">תאריך</th>
+                                        <th scope="col">סטטוס</th>
+                                        <th scope="col">פעולות</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- ימולא ע"י JS בשלב 4 -->
+                                </tbody>
+                                <tfoot>
+                                    <tr>
+                                        <td colspan="2" class="table-footer-label">סה"כ (פעילות):</td>
+                                        <td colspan="4" class="table-footer-value" data-field="invoices-total">—</td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+
+                        <div class="empty-state" data-empty-for="invoices" hidden>
+                            <div class="empty-state-icon" aria-hidden="true">🧾</div>
+                            <p class="empty-state-title">אין חשבוניות עדיין</p>
+                            <p class="empty-state-text">לחצו על "הפקת חשבונית" כדי ליצור את הראשונה</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ==================== מסך 6: לידים ==================== -->
+            <section class="screen" id="screen-leads" data-screen="leads">
+                <header class="screen-header">
+                    <div>
+                        <h1>לידים</h1>
+                        <p class="screen-subtitle">מעקב אחר פניות חדשות עד להפיכתן ללקוחות</p>
+                    </div>
+                </header>
+
+                <div class="toolbar">
+                    <button type="button" class="btn btn-primary" id="btn-add-lead">
+                        <span aria-hidden="true">+</span> הוספת ליד
+                    </button>
+                    <div class="toolbar-spacer"></div>
+                </div>
+
+                <div class="card">
+                    <div class="card-body">
+                        <div class="loading-spinner" data-loading-for="leads" hidden>
+                            <span class="spinner" aria-hidden="true"></span>
+                            <span>טוען לידים...</span>
+                        </div>
+
+                        <div class="table-wrap">
+                            <table class="data-table" data-table="leads">
+                                <thead>
+                                    <tr>
+                                        <th scope="col">מזהה</th>
+                                        <th scope="col">שם</th>
+                                        <th scope="col">טלפון</th>
+                                        <th scope="col">מקור</th>
+                                        <th scope="col">סטטוס</th>
+                                        <th scope="col">הערות</th>
+                                        <th scope="col">פעולות</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- ימולא ע"י JS בשלב 4 -->
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="empty-state" data-empty-for="leads" hidden>
+                            <div class="empty-state-icon" aria-hidden="true">🎯</div>
+                            <p class="empty-state-title">אין לידים עדיין</p>
+                            <p class="empty-state-text">לחצו על "הוספת ליד" כדי לתעד פנייה חדשה</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <!-- ============================================================
+         מודל: הוספה/עריכה של תור
+         ה-id="modal-appointment-title" משתנה בין "הוספת תור" ל-"עריכת תור"
+         ע"י JS בשלב 4, לפי אם נפתח במצב הוספה או עריכה
+         ============================================================ -->
+    <div class="modal-overlay" id="modal-appointment" hidden>
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-appointment-title">
+            <header class="modal-header">
+                <h2 id="modal-appointment-title">הוספת תור חדש</h2>
+                <button type="button" class="modal-close" data-close-modal="modal-appointment" aria-label="סגירה">&times;</button>
+            </header>
+            <form class="modal-body" id="form-appointment" novalidate>
+                <input type="hidden" id="appt-id" name="appointment_id">
+
+                <div class="form-group">
+                    <label class="form-label" for="appt-client">לקוח</label>
+                    <select class="form-input" id="appt-client" name="client_id" required>
+                        <option value="" selected disabled>בחר לקוח...</option>
+                    </select>
+                    <span class="form-error" id="error-appt-client"></span>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">
+                        טיפולים
+                        <span class="form-hint-inline">(ניתן לבחור כמה טיפולים לאותו ביקור)</span>
+                    </label>
+                    <!-- ימולא ע"י JS: checkbox לכל טיפול בקטלוג -->
+                    <div class="treatment-checklist" id="appt-treatment"></div>
+                    <span class="form-error" id="error-appt-treatment"></span>
+
+                    <!-- סה"כ מחיר ומשך - מתעדכן בזמן אמת לפי הטיפולים המסומנים -->
+                    <div class="combo-totals" id="appt-combo-totals" hidden></div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label" for="appt-date">תאריך</label>
+                        <input class="form-input" type="date" id="appt-date" name="appointment_date" required>
+                        <span class="form-error" id="error-appt-date"></span>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="appt-time">שעה</label>
+                        <input class="form-input" type="time" id="appt-time" name="appointment_time" required>
+                        <span class="form-error" id="error-appt-time"></span>
+                    </div>
+                </div>
+
+                <div class="available-slots-hint" id="appt-available-slots" hidden>
+                    <!-- ימולא ע"י JS בשלב 4 עם רשימת שעות פנויות -->
+                </div>
+
+                <div class="form-group" id="appt-status-group" hidden>
+                    <label class="form-label" for="appt-status">סטטוס</label>
+                    <select class="form-input" id="appt-status" name="status">
+                        <option value="pending">ממתין</option>
+                        <option value="completed">הושלם</option>
+                        <option value="cancelled">בוטל</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="appt-notes">הערות (רשות)</label>
+                    <textarea class="form-input" id="appt-notes" name="notes" rows="2"></textarea>
+                </div>
+
+                <div class="form-alert" id="appt-conflict-alert" hidden></div>
+            </form>
+            <footer class="modal-footer">
+                <button type="button" class="btn btn-ghost" data-close-modal="modal-appointment">ביטול</button>
+                <button type="submit" class="btn btn-primary" form="form-appointment">שמירה</button>
+            </footer>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         מודל: הוספה/עריכה של לקוח
+         ============================================================ -->
+    <div class="modal-overlay" id="modal-client" hidden>
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-client-title">
+            <header class="modal-header">
+                <h2 id="modal-client-title">הוספת לקוח חדש</h2>
+                <button type="button" class="modal-close" data-close-modal="modal-client" aria-label="סגירה">&times;</button>
+            </header>
+            <form class="modal-body" id="form-client" novalidate>
+                <input type="hidden" id="client-id" name="client_id">
+
+                <div class="form-group">
+                    <label class="form-label" for="client-name">שם מלא</label>
+                    <input class="form-input" type="text" id="client-name" name="full_name" required>
+                    <span class="form-error" id="error-client-name"></span>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="client-phone">טלפון</label>
+                    <input class="form-input" type="tel" id="client-phone" name="phone"
+                           placeholder="0501234567" required>
+                    <span class="form-error" id="error-client-phone"></span>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="client-email">אימייל (רשות)</label>
+                    <input class="form-input" type="email" id="client-email" name="email">
+                    <span class="form-error" id="error-client-email"></span>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="client-address">כתובת (רשות)</label>
+                    <input class="form-input" type="text" id="client-address" name="address">
+                </div>
+            </form>
+            <footer class="modal-footer">
+                <button type="button" class="btn btn-ghost" data-close-modal="modal-client">ביטול</button>
+                <button type="submit" class="btn btn-primary" form="form-client">שמירה</button>
+            </footer>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         מודל: היסטוריית לקוח (תצוגה בלבד - לא טופס)
+         ============================================================ -->
+    <div class="modal-overlay" id="modal-client-history" hidden>
+        <div class="modal modal-large" role="dialog" aria-modal="true" aria-labelledby="modal-client-history-title">
+            <header class="modal-header">
+                <h2 id="modal-client-history-title">היסטוריית לקוח</h2>
+                <button type="button" class="modal-close" data-close-modal="modal-client-history" aria-label="סגירה">&times;</button>
+            </header>
+            <div class="modal-body">
+                <div class="history-section">
+                    <h3>תורים</h3>
+                    <div class="table-wrap">
+                        <table class="data-table" data-table="client-history-appointments">
+                            <thead>
+                                <tr>
+                                    <th scope="col">תאריך</th>
+                                    <th scope="col">שעה</th>
+                                    <th scope="col">טיפול</th>
+                                    <th scope="col">סטטוס</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- ימולא ע"י JS בשלב 4 -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="empty-state empty-state-small" data-empty-for="client-history-appointments" hidden>
+                        <p>אין תורים ללקוח זה</p>
+                    </div>
+                </div>
+
+                <div class="history-section">
+                    <h3>חשבוניות</h3>
+                    <div class="table-wrap">
+                        <table class="data-table" data-table="client-history-invoices">
+                            <thead>
+                                <tr>
+                                    <th scope="col">מס' חשבונית</th>
+                                    <th scope="col">סכום</th>
+                                    <th scope="col">תאריך</th>
+                                    <th scope="col">סטטוס</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- ימולא ע"י JS בשלב 4 -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="empty-state empty-state-small" data-empty-for="client-history-invoices" hidden>
+                        <p>אין חשבוניות ללקוח זה</p>
+                    </div>
+                    <p class="history-total">
+                        סה"כ פעיל: <strong data-field="client-history-total">—</strong>
+                    </p>
+                </div>
+            </div>
+            <footer class="modal-footer">
+                <button type="button" class="btn btn-ghost" data-close-modal="modal-client-history">סגירה</button>
+            </footer>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         מודל: הוספה/עריכה של טיפול
+         ============================================================ -->
+    <div class="modal-overlay" id="modal-treatment" hidden>
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-treatment-title">
+            <header class="modal-header">
+                <h2 id="modal-treatment-title">הוספת טיפול</h2>
+                <button type="button" class="modal-close" data-close-modal="modal-treatment" aria-label="סגירה">&times;</button>
+            </header>
+            <form class="modal-body" id="form-treatment" novalidate>
+                <input type="hidden" id="treatment-id" name="treatment_id">
+
+                <div class="form-group">
+                    <label class="form-label" for="treatment-name">שם הטיפול</label>
+                    <input class="form-input" type="text" id="treatment-name" name="treatment_name" required>
+                    <span class="form-error" id="error-treatment-name"></span>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="treatment-area">איזור/ים</label>
+                    <input class="form-input" type="text" id="treatment-area" name="body_area"
+                           placeholder="לדוגמה: פנים, שפם, סנטר" required>
+                    <span class="form-hint">ניתן להזין כמה איזורים מופרדים בפסיק</span>
+                    <span class="form-error" id="error-treatment-area"></span>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label" for="treatment-price">מחיר (ש"ח)</label>
+                        <input class="form-input" type="number" id="treatment-price" name="price"
+                               min="0" step="1" required>
+                        <span class="form-error" id="error-treatment-price"></span>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="treatment-duration">משך (דקות)</label>
+                        <input class="form-input" type="number" id="treatment-duration" name="duration_minutes"
+                               min="1" step="1" required>
+                        <span class="form-error" id="error-treatment-duration"></span>
+                    </div>
+                </div>
+            </form>
+            <footer class="modal-footer">
+                <button type="button" class="btn btn-ghost" data-close-modal="modal-treatment">ביטול</button>
+                <button type="submit" class="btn btn-primary" form="form-treatment">שמירה</button>
+            </footer>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         מודל: הפקת חשבונית (אין עריכה - רק הפקה או ביטול)
+         ============================================================ -->
+    <div class="modal-overlay" id="modal-invoice" hidden>
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-invoice-title">
+            <header class="modal-header">
+                <h2 id="modal-invoice-title">הפקת חשבונית</h2>
+                <button type="button" class="modal-close" data-close-modal="modal-invoice" aria-label="סגירה">&times;</button>
+            </header>
+            <form class="modal-body" id="form-invoice" novalidate>
+                <div class="form-group">
+                    <label class="form-label" for="invoice-client">לקוח</label>
+                    <select class="form-input" id="invoice-client" name="client_id" required>
+                        <option value="" selected disabled>בחר לקוח...</option>
+                    </select>
+                    <span class="form-error" id="error-invoice-client"></span>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label" for="invoice-amount">סכום (ש"ח)</label>
+                        <input class="form-input" type="number" id="invoice-amount" name="amount"
+                               min="0" step="1" required>
+                        <span class="form-error" id="error-invoice-amount"></span>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="invoice-date">תאריך</label>
+                        <input class="form-input" type="date" id="invoice-date" name="invoice_date" required>
+                        <span class="form-error" id="error-invoice-date"></span>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="invoice-appointment">קישור לתור (רשות)</label>
+                    <select class="form-input" id="invoice-appointment" name="appointment_id">
+                        <option value="" selected>ללא קישור לתור</option>
+                    </select>
+                </div>
+            </form>
+            <footer class="modal-footer">
+                <button type="button" class="btn btn-ghost" data-close-modal="modal-invoice">ביטול</button>
+                <button type="submit" class="btn btn-primary" form="form-invoice">הפקת חשבונית</button>
+            </footer>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         מודל: הוספה/עריכה של ליד
+         ============================================================ -->
+    <div class="modal-overlay" id="modal-lead" hidden>
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-lead-title">
+            <header class="modal-header">
+                <h2 id="modal-lead-title">הוספת ליד חדש</h2>
+                <button type="button" class="modal-close" data-close-modal="modal-lead" aria-label="סגירה">&times;</button>
+            </header>
+            <form class="modal-body" id="form-lead" novalidate>
+                <input type="hidden" id="lead-id" name="lead_id">
+
+                <div class="form-group">
+                    <label class="form-label" for="lead-name">שם מלא</label>
+                    <input class="form-input" type="text" id="lead-name" name="full_name" required>
+                    <span class="form-error" id="error-lead-name"></span>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="lead-phone">טלפון</label>
+                    <input class="form-input" type="tel" id="lead-phone" name="phone"
+                           placeholder="0501234567" required>
+                    <span class="form-error" id="error-lead-phone"></span>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="lead-source">מקור הפנייה</label>
+                    <select class="form-input" id="lead-source" name="source">
+                        <option value="" selected>לא ידוע</option>
+                        <option value="facebook">פייסבוק</option>
+                        <option value="instagram">אינסטגרם</option>
+                        <option value="google">גוגל</option>
+                        <option value="referral">הפניה</option>
+                        <option value="walk_in">הליכה חופשית</option>
+                    </select>
+                    <span class="form-error" id="error-lead-source"></span>
+                </div>
+
+                <div class="form-group" id="lead-status-group" hidden>
+                    <label class="form-label" for="lead-status">סטטוס</label>
+                    <select class="form-input" id="lead-status" name="status">
+                        <option value="new">חדש</option>
+                        <option value="in_progress">בטיפול</option>
+                        <option value="converted">הומר ללקוח</option>
+                        <option value="rejected">נדחה</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="lead-notes">הערות (רשות)</label>
+                    <textarea class="form-input" id="lead-notes" name="notes" rows="2"></textarea>
+                </div>
+            </form>
+            <footer class="modal-footer">
+                <button type="button" class="btn btn-ghost" data-close-modal="modal-lead">ביטול</button>
+                <button type="submit" class="btn btn-primary" form="form-lead">שמירה</button>
+            </footer>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         מודל: המרת ליד ללקוח (פרטים נוספים - אימייל/כתובת)
+         ============================================================ -->
+    <div class="modal-overlay" id="modal-lead-convert" hidden>
+        <div class="modal modal-small" role="dialog" aria-modal="true" aria-labelledby="modal-lead-convert-title">
+            <header class="modal-header">
+                <h2 id="modal-lead-convert-title">המרת ליד ללקוח</h2>
+                <button type="button" class="modal-close" data-close-modal="modal-lead-convert" aria-label="סגירה">&times;</button>
+            </header>
+            <form class="modal-body" id="form-lead-convert" novalidate>
+                <input type="hidden" id="lead-convert-id" name="lead_id">
+
+                <p class="form-hint" id="lead-convert-summary"></p>
+
+                <div class="form-group">
+                    <label class="form-label" for="lead-convert-email">אימייל (רשות)</label>
+                    <input class="form-input" type="email" id="lead-convert-email" name="email">
+                    <span class="form-error" id="error-lead-convert-email"></span>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="lead-convert-address">כתובת (רשות)</label>
+                    <input class="form-input" type="text" id="lead-convert-address" name="address">
+                </div>
+            </form>
+            <footer class="modal-footer">
+                <button type="button" class="btn btn-ghost" data-close-modal="modal-lead-convert">ביטול</button>
+                <button type="submit" class="btn btn-primary" form="form-lead-convert">המרה ללקוח</button>
+            </footer>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         דיאלוג אישור כללי - משותף לכל פעולה הרסנית באתר
+         (מחיקת תור/לקוח, ביטול חשבונית וכו') - JS בשלב 4 ימלא
+         את הכותרת וההודעה בהתאם לפעולה שנלחצה
+         ============================================================ -->
+    <div class="modal-overlay" id="confirm-dialog" hidden>
+        <div class="modal modal-small" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title">
+            <header class="modal-header">
+                <h2 id="confirm-title">אישור פעולה</h2>
+            </header>
+            <div class="modal-body">
+                <p id="confirm-message">האם אתה בטוח?</p>
+            </div>
+            <footer class="modal-footer">
+                <button type="button" class="btn btn-ghost" id="confirm-cancel-btn">ביטול</button>
+                <button type="button" class="btn btn-danger" id="confirm-ok-btn">אישור</button>
+            </footer>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         מיכל התראות (toast) - הודעות הצלחה/שגיאה חולפות
+         JS בשלב 4 יוסיף ויסיר כאן אלמנטים דינמית
+         ============================================================ -->
+    <div class="toast-container" id="toast-container" aria-live="polite"></div>
+
+    <!-- שלב 4 ימלא את הקובץ הזה בלוגיקה שמחברת את כל מה שמעל ל-API -->
+    <script src="{{ url_for('static', filename='app.js') }}" defer></script>
+</body>
+</html>

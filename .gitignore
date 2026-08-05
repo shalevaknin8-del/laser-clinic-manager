@@ -1,0 +1,18 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Database - נוצר אוטומטית בהרצה
+data/*.db
+
+# Editor
+.vscode/
+.DS_Store
+
+# Virtual env
+venv/
+.venv/
+
+# ZIP להגשה
+*.zip

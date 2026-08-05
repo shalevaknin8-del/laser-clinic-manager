@@ -1,0 +1,977 @@
+/* ============================================================
+   static/style.css
+   עיצוב מלא למערכת ניהול קליניקת הלייזר.
+
+   שלב זה (3) עוסק רק במבנה ועיצוב - אין כאן שום JS, רק CSS
+   טהור שמגדיר איך הדברים ייראו. כל ה-class וה-data-* attribute
+   שמופיעים כאן תואמים בדיוק למה שכתוב ב-templates/index.html.
+
+   מבנה הקובץ (לפי סדר):
+   1. משתני עיצוב (CSS Variables) - צבעים, מרווחים, פינות
+   2. איפוס בסיסי + טיפוגרפיה
+   3. שלד האפליקציה (sidebar + main)
+   4. ניווט צדדי
+   5. מסכים (screens) - הצגה/הסתרה
+   6. כרטיסים וגריד סטטיסטיקות (דשבורד)
+   7. טולבר (שורת כפתורים מעל טבלאות)
+   8. טבלאות נתונים
+   9. מצב ריק (empty state)
+   10. ספינר טעינה
+   11. כפתורים
+   12. טפסים + הודעות שגיאה
+   13. מודלים (חלונות קופצים)
+   14. דיאלוג אישור
+   15. תגי סטטוס (badges)
+   16. הודעות toast
+   17. רספונסיביות - טאבלט ומסכים קטנים
+   ============================================================ */
+
+
+/* ============================================================
+   1. משתני עיצוב - צבע אחיד לכל האתר, נוח לשינוי במקום אחד
+   פלטה: גוון רוז/סגול עדין שמתאים לקליניקת יופי,
+   על רקע בהיר ונקי, עם ניווט כהה ואלגנטי בצד
+   ============================================================ */
+:root {
+    /* צבעי מותג */
+    --color-primary: #b8698a;
+    --color-primary-dark: #96506d;
+    --color-primary-light: #f5e5ec;
+
+    /* רקעים ומשטחים */
+    --color-bg: #faf7f6;
+    --color-surface: #ffffff;
+    --color-sidebar: #2c2333;
+    --color-sidebar-hover: #3b2f45;
+
+    /* טקסט */
+    --color-text: #2c2530;
+    --color-text-muted: #7d7480;
+    --color-text-on-dark: #f3edf5;
+    --color-text-on-dark-muted: #b3a7bb;
+
+    /* גבולות */
+    --color-border: #e9e1e4;
+
+    /* צבעי מצב */
+    --color-success: #3fa373;
+    --color-success-bg: #e5f5ee;
+    --color-danger: #d1554f;
+    --color-danger-bg: #fbe9e8;
+    --color-warning: #d99a3b;
+    --color-warning-bg: #faf0dd;
+    --color-info: #4c7ea8;
+    --color-info-bg: #e7f0f7;
+
+    /* מרווחים */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 24px;
+    --space-6: 32px;
+
+    /* פינות עגולות */
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 16px;
+
+    /* צללים */
+    --shadow-sm: 0 1px 3px rgba(44, 35, 51, 0.08);
+    --shadow-md: 0 6px 20px rgba(44, 35, 51, 0.12);
+    --shadow-lg: 0 12px 40px rgba(44, 35, 51, 0.22);
+
+    /* רוחב הניווט הצדדי */
+    --sidebar-width: 240px;
+}
+
+
+/* ============================================================
+   2. איפוס בסיסי + טיפוגרפיה
+   בלי CDN לפונטים - נסמכים על גופני המערכת שתומכים בעברית
+   ============================================================ */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html, body {
+    height: 100%;
+}
+
+body {
+    font-family: "Segoe UI", "Arial Hebrew", "Assistant", -apple-system,
+                 BlinkMacSystemFont, Arial, sans-serif;
+    background-color: var(--color-bg);
+    color: var(--color-text);
+    line-height: 1.5;
+    font-size: 15px;
+}
+
+h1 {
+    font-size: 26px;
+    font-weight: 700;
+}
+
+h2 {
+    font-size: 18px;
+    font-weight: 600;
+}
+
+h3 {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    margin-bottom: var(--space-3);
+}
+
+button {
+    font-family: inherit;
+    cursor: pointer;
+}
+
+input, select, textarea {
+    font-family: inherit;
+    font-size: inherit;
+}
+
+ul {
+    list-style: none;
+}
+
+
+/* ============================================================
+   3. שלד האפליקציה - ניווט צדדי קבוע + אזור תוכן
+   ============================================================ */
+.app-shell {
+    display: flex;
+    min-height: 100vh;
+}
+
+.main-content {
+    flex: 1;
+    padding: var(--space-6);
+    max-width: 1200px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+
+/* ============================================================
+   4. ניווט צדדי
+   ============================================================ */
+.sidebar {
+    width: var(--sidebar-width);
+    flex-shrink: 0;
+    background-color: var(--color-sidebar);
+    color: var(--color-text-on-dark);
+    padding: var(--space-5) var(--space-3);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+}
+
+.sidebar-brand {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: 0 var(--space-2);
+}
+
+.sidebar-brand-icon {
+    font-size: 28px;
+}
+
+.sidebar-brand-text {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.3;
+}
+
+.sidebar-brand-text strong {
+    font-size: 15px;
+    color: var(--color-text-on-dark);
+}
+
+.sidebar-brand-text span {
+    font-size: 12px;
+    color: var(--color-text-on-dark-muted);
+}
+
+.sidebar-nav {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+}
+
+.nav-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    width: 100%;
+    padding: var(--space-3) var(--space-3);
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-md);
+    color: var(--color-text-on-dark-muted);
+    font-size: 14px;
+    font-weight: 500;
+    text-align: right;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.nav-item:hover {
+    background-color: var(--color-sidebar-hover);
+    color: var(--color-text-on-dark);
+}
+
+.nav-item.is-active {
+    background-color: var(--color-primary);
+    color: #ffffff;
+}
+
+.nav-icon {
+    font-size: 17px;
+    width: 20px;
+    text-align: center;
+}
+
+
+/* ============================================================
+   5. מסכים - רק המסך עם is-active מוצג
+   ============================================================ */
+.screen {
+    display: none;
+}
+
+.screen.is-active {
+    display: block;
+    animation: screen-fade-in 0.2s ease;
+}
+
+@keyframes screen-fade-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.screen-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    margin-bottom: var(--space-5);
+}
+
+.screen-subtitle {
+    color: var(--color-text-muted);
+    font-size: 14px;
+    margin-top: var(--space-1);
+}
+
+
+/* ============================================================
+   6. כרטיסים + גריד סטטיסטיקות (דשבורד)
+   ============================================================ */
+.card {
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    margin-bottom: var(--space-5);
+}
+
+.card-header {
+    padding: var(--space-4) var(--space-5);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.card-body {
+    padding: var(--space-5);
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--space-4);
+    margin-bottom: var(--space-5);
+}
+
+.stat-card {
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    padding: var(--space-5);
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+}
+
+.stat-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    flex-shrink: 0;
+    background-color: var(--color-primary-light);
+}
+
+.stat-icon-clients { background-color: var(--color-info-bg); }
+.stat-icon-revenue { background-color: var(--color-success-bg); }
+.stat-icon-leads { background-color: var(--color-warning-bg); }
+
+.stat-body {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.stat-value {
+    font-size: 24px;
+    font-weight: 700;
+}
+
+.stat-label {
+    font-size: 13px;
+    color: var(--color-text-muted);
+}
+
+
+/* ============================================================
+   7. טולבר - שורת כפתורים מעל טבלאות
+   ============================================================ */
+.toolbar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-bottom: var(--space-4);
+    flex-wrap: wrap;
+}
+
+.toolbar-spacer {
+    flex: 1;
+}
+
+.toolbar-search {
+    max-width: 260px;
+}
+
+.toolbar-checkbox {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: 14px;
+    color: var(--color-text-muted);
+}
+
+
+/* ============================================================
+   8. טבלאות נתונים
+   ============================================================ */
+.table-wrap {
+    overflow-x: auto;
+}
+
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.data-table th {
+    text-align: right;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: var(--space-3) var(--space-3);
+    border-bottom: 2px solid var(--color-border);
+    white-space: nowrap;
+}
+
+.data-table td {
+    padding: var(--space-3) var(--space-3);
+    border-bottom: 1px solid var(--color-border);
+    font-size: 14px;
+    white-space: nowrap;
+}
+
+.data-table tbody tr:hover {
+    background-color: var(--color-primary-light);
+}
+
+.data-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.data-table tfoot td {
+    padding: var(--space-3);
+    border-top: 2px solid var(--color-border);
+    border-bottom: none;
+}
+
+.table-footer-label {
+    font-weight: 600;
+    color: var(--color-text-muted);
+}
+
+.table-footer-value {
+    font-weight: 700;
+    font-size: 16px;
+}
+
+.table-actions {
+    display: flex;
+    gap: var(--space-2);
+}
+
+.btn-icon {
+    width: 30px;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--color-border);
+    background-color: var(--color-surface);
+    border-radius: var(--radius-sm);
+    font-size: 14px;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.btn-icon:hover {
+    background-color: var(--color-primary-light);
+    border-color: var(--color-primary);
+}
+
+.btn-icon-danger:hover {
+    background-color: var(--color-danger-bg);
+    border-color: var(--color-danger);
+}
+
+
+/* ============================================================
+   9. מצב ריק - מוצג במקום טבלה ריקה כשאין נתונים
+   ============================================================ */
+.empty-state {
+    text-align: center;
+    padding: var(--space-6) var(--space-4);
+    color: var(--color-text-muted);
+}
+
+.empty-state-icon {
+    font-size: 40px;
+    margin-bottom: var(--space-3);
+}
+
+.empty-state-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--color-text);
+    margin-bottom: var(--space-1);
+}
+
+.empty-state-text {
+    font-size: 13px;
+}
+
+.empty-state-small {
+    padding: var(--space-4);
+}
+
+.empty-state-small p {
+    font-size: 13px;
+}
+
+
+/* ============================================================
+   10. ספינר טעינה - מוצג בזמן קריאה ל-API, לא מסך קפוא
+   ============================================================ */
+.loading-spinner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-3);
+    padding: var(--space-5);
+    color: var(--color-text-muted);
+    font-size: 14px;
+}
+
+.spinner {
+    width: 20px;
+    height: 20px;
+    border: 3px solid var(--color-primary-light);
+    border-top-color: var(--color-primary);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* מיכל טעינה במצב "טוען" מסתיר את הטבלה מתחתיו */
+.loading-spinner[hidden] {
+    display: none;
+}
+
+
+/* ============================================================
+   11. כפתורים
+   ============================================================ */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-md);
+    border: 1px solid transparent;
+    font-size: 14px;
+    font-weight: 600;
+    transition: background-color 0.15s ease, border-color 0.15s ease,
+                box-shadow 0.15s ease;
+}
+
+.btn-primary {
+    background-color: var(--color-primary);
+    color: #ffffff;
+}
+
+.btn-primary:hover {
+    background-color: var(--color-primary-dark);
+}
+
+.btn-ghost {
+    background-color: transparent;
+    border-color: var(--color-border);
+    color: var(--color-text);
+}
+
+.btn-ghost:hover {
+    background-color: var(--color-bg);
+}
+
+.btn-danger {
+    background-color: var(--color-danger);
+    color: #ffffff;
+}
+
+.btn-danger:hover {
+    background-color: #b3433d;
+}
+
+.btn:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+}
+
+
+/* ============================================================
+   12. טפסים + הודעות שגיאה
+   כל שדה עטוף ב-.form-group, עם .form-error מתחתיו שמתמלא
+   ע"י JS בשלב 4 כשהקלט לא תקין
+   ============================================================ */
+.form-group {
+    margin-bottom: var(--space-4);
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-4);
+}
+
+.form-label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    margin-bottom: var(--space-2);
+}
+
+.form-input {
+    width: 100%;
+    padding: var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background-color: var(--color-surface);
+    color: var(--color-text);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.form-input:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px var(--color-primary-light);
+}
+
+/* מצב שגיאה על שדה - מחלקה שתתווסף/תוסר ע"י JS בשלב 4 */
+.form-input.has-error {
+    border-color: var(--color-danger);
+}
+
+.form-input.has-error:focus {
+    box-shadow: 0 0 0 3px var(--color-danger-bg);
+}
+
+textarea.form-input {
+    resize: vertical;
+    min-height: 60px;
+}
+
+.form-hint {
+    display: block;
+    font-size: 12px;
+    color: var(--color-text-muted);
+    margin-top: var(--space-1);
+}
+
+.form-error {
+    display: block;
+    font-size: 12px;
+    color: var(--color-danger);
+    margin-top: var(--space-1);
+    min-height: 16px;
+}
+
+.form-alert {
+    background-color: var(--color-danger-bg);
+    color: var(--color-danger);
+    border-radius: var(--radius-md);
+    padding: var(--space-3);
+    font-size: 13px;
+    margin-top: var(--space-2);
+}
+
+.available-slots-hint {
+    background-color: var(--color-info-bg);
+    color: var(--color-info);
+    border-radius: var(--radius-md);
+    padding: var(--space-3);
+    font-size: 13px;
+    margin-bottom: var(--space-4);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+/* כפתור שעה פנויה בודדת (בתוך available-slots-hint) - JS ממלא אותם
+   דינמית, לחיצה עליו ממלאת את שדה השעה בטופס */
+.slot-chip {
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-info);
+    color: var(--color-info);
+    border-radius: 999px;
+    padding: 2px var(--space-2);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.slot-chip:hover {
+    background-color: var(--color-info);
+    color: #ffffff;
+}
+
+/* טקסט הסבר קצר בתוך label - "(ניתן לבחור כמה טיפולים...)" */
+.form-hint-inline {
+    font-weight: 400;
+    color: var(--color-text-muted);
+    text-transform: none;
+    letter-spacing: normal;
+    font-size: 12px;
+}
+
+/* רשימת checkbox-ים לבחירת טיפול מרוכב - קופסה גוללת עם גבול,
+   כדי שקטלוג ארוך לא ישבור את גובה המודל */
+.treatment-checklist {
+    max-height: 220px;
+    overflow-y: auto;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: var(--space-2);
+}
+
+/* אותה מחלקת שגיאה כמו .form-input.has-error - JS מוסיף אותה
+   כשלא נבחר אף טיפול (setFieldError('appt-treatment', ...)) */
+.treatment-checklist.has-error {
+    border-color: var(--color-danger);
+}
+
+.treatment-checklist-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2);
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.treatment-checklist-item:hover {
+    background-color: var(--color-primary-light);
+}
+
+.treatment-checklist-item input {
+    cursor: pointer;
+}
+
+.treatment-checklist-item span.item-price {
+    color: var(--color-text-muted);
+    margin-inline-start: auto;
+    white-space: nowrap;
+}
+
+/* הודעה כשהקטלוג ריק לגמרי - אין אף checkbox להציג */
+.treatment-checklist-empty {
+    padding: var(--space-3);
+    color: var(--color-text-muted);
+    font-size: 13px;
+    text-align: center;
+}
+
+/* פס סיכום "סה"כ" - מתעדכן ע"י JS בכל שינוי בחירה */
+.combo-totals {
+    background-color: var(--color-primary-light);
+    color: var(--color-primary-dark);
+    border-radius: var(--radius-md);
+    padding: var(--space-3);
+    font-size: 13px;
+    font-weight: 600;
+    margin-top: var(--space-3);
+}
+
+
+/* ============================================================
+   13. מודלים (חלונות קופצים)
+   ============================================================ */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background-color: rgba(44, 35, 51, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-4);
+    z-index: 100;
+}
+
+.modal-overlay[hidden] {
+    display: none;
+}
+
+.modal {
+    background-color: var(--color-surface);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    width: 100%;
+    max-width: 480px;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.modal-small {
+    max-width: 380px;
+}
+
+.modal-large {
+    max-width: 680px;
+}
+
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-4) var(--space-5);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.modal-close {
+    background: transparent;
+    border: none;
+    font-size: 22px;
+    line-height: 1;
+    color: var(--color-text-muted);
+    padding: var(--space-1);
+}
+
+.modal-close:hover {
+    color: var(--color-text);
+}
+
+.modal-body {
+    padding: var(--space-5);
+    overflow-y: auto;
+}
+
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-3);
+    padding: var(--space-4) var(--space-5);
+    border-top: 1px solid var(--color-border);
+}
+
+.history-section {
+    margin-bottom: var(--space-5);
+}
+
+.history-section:last-child {
+    margin-bottom: 0;
+}
+
+.history-total {
+    text-align: left;
+    margin-top: var(--space-3);
+    font-size: 14px;
+    color: var(--color-text-muted);
+}
+
+
+/* ============================================================
+   14. דיאלוג אישור - נראה כמו מודל קטן, אבל בלי טופס
+   ============================================================ */
+#confirm-dialog .modal-body p {
+    color: var(--color-text-muted);
+    font-size: 14px;
+}
+
+
+/* ============================================================
+   15. תגי סטטוס (badges) - צבע לפי משמעות הסטטוס
+   ============================================================ */
+.badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px var(--space-2);
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.badge-pending, .badge-new {
+    background-color: var(--color-warning-bg);
+    color: var(--color-warning);
+}
+
+.badge-completed, .badge-converted {
+    background-color: var(--color-success-bg);
+    color: var(--color-success);
+}
+
+.badge-cancelled, .badge-rejected {
+    background-color: var(--color-danger-bg);
+    color: var(--color-danger);
+}
+
+.badge-in_progress {
+    background-color: var(--color-info-bg);
+    color: var(--color-info);
+}
+
+
+/* ============================================================
+   16. הודעות toast - מופיעות זמנית ונעלמות לבד (ע"י JS בשלב 4)
+   ============================================================ */
+.toast-container {
+    position: fixed;
+    bottom: var(--space-5);
+    left: var(--space-5);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    z-index: 200;
+}
+
+.toast {
+    background-color: var(--color-text);
+    color: #ffffff;
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-md);
+    font-size: 14px;
+    min-width: 220px;
+    animation: toast-in 0.2s ease;
+    /* app.js מאפס opacity ל-0 לפני ההסרה מה-DOM - המעבר נותן דהייה חלקה */
+    transition: opacity 0.2s ease;
+}
+
+@keyframes toast-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.toast-success {
+    background-color: var(--color-success);
+}
+
+.toast-error {
+    background-color: var(--color-danger);
+}
+
+
+/* ============================================================
+   17. רספונסיביות - טאבלט ומסכים קטנים
+   ============================================================ */
+@media (max-width: 900px) {
+    .app-shell {
+        flex-direction: column;
+    }
+
+    .sidebar {
+        width: 100%;
+        flex-direction: row;
+        align-items: center;
+        padding: var(--space-3) var(--space-4);
+        gap: var(--space-4);
+        overflow-x: auto;
+    }
+
+    .sidebar-nav {
+        flex-direction: row;
+        gap: var(--space-2);
+    }
+
+    .nav-item {
+        flex-direction: column;
+        gap: 2px;
+        padding: var(--space-2) var(--space-3);
+        white-space: nowrap;
+    }
+
+    .nav-label {
+        font-size: 11px;
+    }
+
+    .main-content {
+        padding: var(--space-4);
+    }
+
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .form-row {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 560px) {
+    .stats-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .screen-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--space-3);
+    }
+
+    .toolbar-search {
+        max-width: 100%;
+        width: 100%;
+    }
+}
