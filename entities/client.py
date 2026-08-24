@@ -11,11 +11,15 @@ class Client:
     מכיל את כל פרטי הלקוח - שם, טלפון, אימייל, כתובת.
     """
 
-    def __init__(self, full_name, phone, email=None, address=None,
-                 client_id=None):
+    def __init__(self, full_name, phone, email=None, address=None, client_id=None,
+             national_id_hash=None):
         # מזהה ייחודי של הלקוח — יתקבל מ-DB אחרי הוספה
         self.client_id = client_id
-        
+                 # טביעת אצבע של תעודת הזהות, לא המספר עצמו. 
+       
+        # משמשת לאימות זהות בלבד ואינה מוחזרת בשום תגובת API
+      
+        self.national_id_hash = national_id_hash
         # שם מלא של הלקוח (שדה חובה)
         self.full_name = full_name
         

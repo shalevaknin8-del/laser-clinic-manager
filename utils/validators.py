@@ -186,3 +186,65 @@ def validate_lead_status(status):
         return False, f"סטטוס לא תקין - האפשרויות הן: {options}"
 
     return True, None
+
+def validate_national_id(national_id):
+    """
+    בודק תקינות של מספר תעודת זהות ישראלית.
+
+    הבדיקה כוללת שני שלבים:
+    ראשית, שהקלט מכיל תשע ספרות בלבד.
+    שנית, אימות ספרת הביקורת לפי האלגוריתם הרשמי.
+
+    האלגוריתם: כל ספרה מוכפלת לסירוגין ב-1 וב-2. אם התוצאה
+    דו-ספרתית, מקפלים אותה לסכום ספרותיה. סכום כל התוצאות
+    חייב להתחלק ב-10 ללא שארית.
+
+    מחזיר צמד (is_valid, error_message).
+    """
+    if national_id is None:
+        return False, "יש להזין מספר תעודת זהות"
+
+    # ניקוי רווחים ומקפים שמשתמשים נוטים להוסיף
+    cleaned = str(national_id).strip().replace("-", "").replace(" ", "")
+
+    if not cleaned:
+        return False, "יש להזין מספר תעודת זהות"
+
+    if not cleaned.isdigit():
+        return False, "תעודת זהות יכולה להכיל ספרות בלבד"
+
+    # תעודות זהות ישנות נכתבות לעיתים בלי אפסים מובילים
+    if len(cleaned) > 9:
+        return False, "תעודת זהות מכילה 9 ספרות"
+    cleaned = cleaned.zfill(9)
+
+    # חישוב ספרת הביקורת
+    total = 0
+    for index, digit_char in enumerate(cleaned):
+        digit = int(digit_char)
+        # ספרות במקום זוגי מוכפלות ב-1, ובמקום אי-זוגי ב-2
+        multiplied = digit * (1 if index % 2 == 0 else 2)
+        # תוצאה דו-ספרתית מקופלת לסכום ספרותיה
+        if multiplied > 9:
+            multiplied = multiplied - 9
+        total += multiplied
+
+    if total % 10 != 0:
+        return False, "מספר תעודת הזהות אינו תקין"
+
+    return True, None
+
+
+def normalize_national_id(national_id):
+    """
+    מחזיר את תעודת הזהות בפורמט אחיד: תשע ספרות עם אפסים מובילים.
+
+    הנרמול חיוני לאימות. בלעדיו, לקוחה שנרשמה עם 12345678
+    לא תזוהה כשתקליד 012345678, למרות שמדובר באותה תעודה.
+    """
+    if national_id is None:
+        return None
+    cleaned = str(national_id).strip().replace("-", "").replace(" ", "")
+    if not cleaned.isdigit():
+        return None
+    return cleaned.zfill(9)

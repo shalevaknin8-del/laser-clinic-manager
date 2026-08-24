@@ -214,3 +214,102 @@ class ClientManager:
         finally:
             if connection is not None:
                 connection.close()
+
+
+    def set_national_id(self, client_id, national_id):
+        """
+        שומר טביעת אצבע של תעודת זהות עבור לקוח.
+
+        המספר עצמו לא נשמר בשום מקום. מה שנכנס למסד
+        הוא תוצאת חישוב חד-כיווני שאי אפשר להפוך בחזרה.
+
+        מחזיר True אם העדכון הצליח.
+        """
+        from utils.validators import validate_national_id, normalize_national_id
+        from utils.security import hash_national_id
+
+        is_valid, error_message = validate_national_id(national_id)
+        if not is_valid:
+            self.last_error = error_message
+            return False
+
+        normalized = normalize_national_id(national_id)
+        stored_hash = hash_national_id(normalized)
+
+        connection = get_connection()
+        cursor = connection.cursor()
+
+        try:
+            cursor.execute(
+                "UPDATE clients SET national_id_hash = ? WHERE client_id = ?",
+                (stored_hash, client_id),
+            )
+            connection.commit()
+
+            if cursor.rowcount == 0:
+                self.last_error = "הלקוח לא נמצא"
+                return False
+
+            return True
+
+        except sqlite3.Error as error:
+            self.last_error = translate_db_error(error, "שמירת תעודת זהות")
+            return False
+
+        finally:
+            connection.close()
+
+    def verify_client_national_id(self, client_id, national_id):
+        """
+        בודק האם תעודת הזהות שהוזנה תואמת ללקוח.
+
+        זו הפונקציה היחידה במערכת שמשווה תעודות זהות,
+        והיא מחזירה True או False בלבד. היא לא מדליפה
+        מידע על הסיבה לכישלון ולא על הערך השמור.
+
+        מחזיר False גם כאשר ללקוח אין תעודת זהות שמורה,
+        כדי שלא ייווצר מצב שבו רשומה חסרה מאפשרת מעבר.
+        """
+        from utils.validators import normalize_national_id
+        from utils.security import verify_national_id
+
+        connection = get_connection()
+        cursor = connection.cursor()
+
+        try:
+            cursor.execute(
+                "SELECT national_id_hash FROM clients WHERE client_id = ?",
+                (client_id,),
+            )
+            row = cursor.fetchone()
+
+            if row is None or row[0] is None:
+                return False
+
+            normalized = normalize_national_id(national_id)
+            if normalized is None:
+                return False
+
+            return verify_national_id(normalized, row[0])
+
+        finally:
+            connection.close()
+
+    def has_national_id(self, client_id):
+        """
+        בודק האם ללקוח כבר שמורה תעודת זהות.
+        משמש כדי לדעת אם אפשר בכלל לאמת אותו.
+        """
+        connection = get_connection()
+        cursor = connection.cursor()
+
+        try:
+            cursor.execute(
+                "SELECT national_id_hash FROM clients WHERE client_id = ?",
+                (client_id,),
+            )
+            row = cursor.fetchone()
+            return row is not None and row[0] is not None
+
+        finally:
+            connection.close()
