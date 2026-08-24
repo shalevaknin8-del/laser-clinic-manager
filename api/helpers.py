@@ -93,3 +93,15 @@ def invoice_to_dict(invoice):
         "is_cancelled": bool(invoice.is_cancelled),
         "cancelled_at": invoice.cancelled_at,
     }
+
+
+
+def treatment_to_dict(treatment):
+    """ממיר אובייקט טיפול למילון שניתן להחזיר כ-JSON."""
+    return {
+        "treatment_id": treatment.treatment_id,
+        "treatment_name": treatment.treatment_name,
+        "body_area": treatment.body_area,
+        "price": treatment.price,
+        "duration_minutes": treatment.duration_minutes,
+    }

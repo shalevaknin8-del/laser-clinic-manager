@@ -67,6 +67,8 @@ from api.leads_api import leads_bp
 app.register_blueprint(leads_bp)
 from api.invoices_api import invoices_bp
 app.register_blueprint(invoices_bp)
+from api.treatments_api import treatments_bp
+app.register_blueprint(treatments_bp)
 
 # בדיוק כמו ב-main.py: מופע אחד מכל מנהל, משותף לכל הבקשות
 appointment_manager = AppointmentManager()
@@ -714,115 +716,6 @@ def delete_client(client_id):
         status_code = 404 if "לא נמצא" in (client_manager.last_error or "") else 409
         return json_error(client_manager.last_error, status_code=status_code)
     return jsonify({"success": True})
-
-
-# ============================================================
-# API - טיפולים
-# ============================================================
-
-def _validate_treatment_fields(treatment_name, body_area, price, duration_minutes):
-    """
-    ולידציה של שדות טיפול. אין ולידטור ייעודי לשם טיפול/איזור
-    ב-utils/validators.py (validate_name מיועד לשמות אנשים ואוסר
-    ספרות) - לכן נבדק כאן רק שהשדה לא ריק, ברוח שאר הוולידטורים
-    שמחזירים (is_valid, error_message).
-    """
-    if not treatment_name or not treatment_name.strip():
-        return False, "שם הטיפול לא יכול להיות ריק", "treatment_name"
-
-    if not body_area or not body_area.strip():
-        return False, "יש להזין לפחות איזור אחד", "body_area"
-
-    is_valid, error_message = validate_positive_number(price, "המחיר")
-    if not is_valid:
-        return False, error_message, "price"
-
-    is_valid, error_message = validate_positive_number(duration_minutes, "משך הטיפול")
-    if not is_valid:
-        return False, error_message, "duration_minutes"
-
-    return True, None, None
-
-
-@app.route("/api/treatments", methods=["GET"])
-def get_treatments():
-    treatments = treatment_manager.get_all_treatments()
-    return jsonify([treatment_to_dict(treatment) for treatment in treatments])
-
-
-@app.route("/api/treatments/seed", methods=["POST"])
-def seed_treatments():
-    """מאתחל את קטלוג הטיפולים ההתחלתי (13 טיפולים) - רץ רק אם ריק"""
-    added_count = treatment_manager.seed_catalog()
-    return jsonify({"added_count": added_count})
-
-
-@app.route("/api/treatments", methods=["POST"])
-def create_treatment():
-    data = request.get_json(silent=True) or {}
-
-    treatment_name = data.get("treatment_name", "")
-    body_area = data.get("body_area", "")
-    price = data.get("price")
-    duration_minutes = data.get("duration_minutes")
-
-    is_valid, error_message, field = _validate_treatment_fields(
-        treatment_name, body_area, price, duration_minutes
-    )
-    if not is_valid:
-        return json_error(error_message, field=field)
-
-    new_treatment = Treatment(
-        treatment_name=treatment_name.strip(),
-        body_area=body_area.strip(),
-        price=float(price),
-        duration_minutes=int(duration_minutes),
-    )
-
-    result, db_error = run_db_operation(
-        lambda: treatment_manager.insert_treatment(new_treatment),
-        "הוספת טיפול"
-    )
-    if db_error:
-        return json_error(db_error, status_code=409)
-
-    return jsonify(treatment_to_dict(result)), 201
-
-
-@app.route("/api/treatments/<int:treatment_id>", methods=["PUT"])
-def update_treatment(treatment_id):
-    existing = treatment_manager.get_treatment_by_id(treatment_id)
-    if existing is None:
-        return json_error("הטיפול לא נמצא", status_code=404)
-
-    data = request.get_json(silent=True) or {}
-
-    treatment_name = data.get("treatment_name", existing.treatment_name)
-    body_area = data.get("body_area", existing.body_area)
-    price = data.get("price", existing.price)
-    duration_minutes = data.get("duration_minutes", existing.duration_minutes)
-
-    is_valid, error_message, field = _validate_treatment_fields(
-        treatment_name, body_area, price, duration_minutes
-    )
-    if not is_valid:
-        return json_error(error_message, field=field)
-
-    existing.treatment_name = treatment_name.strip()
-    existing.body_area = body_area.strip()
-    existing.price = float(price)
-    existing.duration_minutes = int(duration_minutes)
-
-    success, db_error = run_db_operation(
-        lambda: treatment_manager.update_treatment(existing),
-        "עדכון טיפול"
-    )
-    if db_error:
-        return json_error(db_error, status_code=409)
-    if not success:
-        return json_error("העדכון נכשל", status_code=404)
-
-    return jsonify(treatment_to_dict(existing))
 
 # ============================================================
 # הרצה
