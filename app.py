@@ -1,350 +1,86 @@
 # ============================================================
 # app.py
-# שרת ה-Web של מערכת ניהול קליניקת הלייזר.
+# נקודת הכניסה של אפליקציית הווב.
 #
-# תפקיד הקובץ: לחשוף REST API (JSON) שמאפשר לממשק ה-Web
-# (templates/index.html + static/app.js) לדבר עם המערכת הקיימת.
+# תפקיד הקובץ: ליצור את האפליקציה, לחבר אליה את קבוצות
+# ה-routes, ולהריץ אותה. אין כאן לוגיקה עסקית ואין routes.
 #
-# חשוב: הקובץ הזה הוא רק "מעטפת" - הוא כמעט ולא מכיל SQL,
-# ולא נוגע בבסיס הנתונים ישירות. כל פעולה עוברת דרך אחד
-# מ-5 ה-Managers הקיימים (בדיוק כמו ש-main.py עושה).
-# main.py ממשיך לעבוד בדיוק כמו קודם - הקובץ הזה לא נוגע בו.
+# כל נקודות הקצה נמצאות בתיקיית api, מחולקות לפי ישות.
+# החלוקה הזו מאפשרת לאכוף הרשאות ברמת הקבוצה במקום
+# ברמת כל endpoint בנפרד.
 #
-# יוצא מן הכלל אחד: AppointmentTreatmentManager (קובץ חדש, ראו
-# managers/appointment_treatment_manager.py) - מנהל "טיפול מרוכב"
-# (כמה טיפולים לאותו תור), עם טבלת קישור משלו. זו החריגה היחידה
-# שכן כוללת SQL חדש בפרויקט, באישור מפורש - כי אי אפשר לחשב
-# מחיר/משך כולל שמשפיע נכון על הלוז בלי טבלת קישור אמיתית.
-#
-# הרצה:  python3 app.py
+# הרצה מקומית:  python3 app.py
 # ============================================================
 
-import sqlite3
-from datetime import datetime
-
-from flask import Flask, jsonify, request
+from flask import Flask, render_template
 
 from database import initialize_database
-
-from entities.appointment import Appointment
-from entities.client import Client
-from entities.treatment import Treatment
-from entities.invoice import Invoice
-from entities.lead import Lead
-
-from managers.appointment_manager import AppointmentManager
-from managers.client_manager import ClientManager
 from managers.treatment_manager import TreatmentManager
-from managers.invoice_manager import InvoiceManager
-from managers.lead_manager import LeadManager
 from managers.appointment_treatment_manager import AppointmentTreatmentManager
-from utils.validators import (
-    validate_name,
-    validate_phone,
-    validate_email,
-    validate_date,
-    validate_time,
-    validate_positive_number,
-    validate_appointment_status,
-    validate_lead_status,
-)
-from utils.db_errors import translate_db_error
 
+from api.clients_api import clients_bp
+from api.appointments_api import appointments_bp
+from api.treatments_api import treatments_bp
+from api.invoices_api import invoices_bp
+from api.leads_api import leads_bp
+from api.dashboard_api import dashboard_bp
 
-# ============================================================
-# אתחול האפליקציה והמנהלים
-# ============================================================
 
 app = Flask(__name__)
 
-# מונע escaping של תווים עבריים ל-\uXXXX בתגובות JSON - כך שגם
-# בבדיקה ידנית (curl / כלי פיתוח בדפדפן) הטקסט קריא כרגיל
+# מונע המרה של תווים עבריים לקודים בתגובות JSON,
+# כך שהטקסט קריא גם בבדיקה ידנית בכלי הפיתוח של הדפדפן
 app.json.ensure_ascii = False
 
-# ---- חיבור קבוצות ה-routes (Blueprints) ----
-from api.leads_api import leads_bp
-app.register_blueprint(leads_bp)
-from api.invoices_api import invoices_bp
-app.register_blueprint(invoices_bp)
-from api.treatments_api import treatments_bp
-app.register_blueprint(treatments_bp)
-from api.clients_api import clients_bp
+
+# ============================================================
+# חיבור קבוצות ה-routes
+# ============================================================
+
 app.register_blueprint(clients_bp)
-from api.appointments_api import appointments_bp
 app.register_blueprint(appointments_bp)
-
-# בדיוק כמו ב-main.py: מופע אחד מכל מנהל, משותף לכל הבקשות
-appointment_manager = AppointmentManager()
-client_manager = ClientManager()
-treatment_manager = TreatmentManager()
-invoice_manager = InvoiceManager()
-lead_manager = LeadManager()
-appointment_treatment_manager = AppointmentTreatmentManager()
-
-# מקורות פנייה חוקיים לליד - אותה רשימה שמוצגת בתפריט ה-CLI
-# (main.py, add_lead) - אין ולידטור ייעודי בקובץ validators.py, לכן
-# הרשימה מוגדרת כאן, בשכבת ה-API בלבד.
-VALID_LEAD_SOURCES = ["facebook", "instagram", "google", "referral", "walk_in"]
+app.register_blueprint(treatments_bp)
+app.register_blueprint(invoices_bp)
+app.register_blueprint(leads_bp)
+app.register_blueprint(dashboard_bp)
 
 
 # ============================================================
-# פונקציות עזר כלליות
+# עמוד הבית
 # ============================================================
 
-def json_error(message, status_code=400, field=None):
-    """
-    בונה תגובת שגיאה אחידה בפורמט JSON.
-    כל השגיאות במערכת (ולידציה, לא נמצא, התנגשות...) עוברות דרך כאן
-    כדי שהצד לקוח (JS) תמיד ידע לצפות לאותו מבנה: {"error": "..."}
-    """
-    body = {"error": message}
-    if field is not None:
-        body["field"] = field
-    return jsonify(body), status_code
-
-
-def run_db_operation(operation, context):
-    """
-    מריץ פעולת DB שעלולה לזרוק שגיאת SQLite (למשל הפרת מפתח זר),
-    ומתרגם את השגיאה לעברית באמצעות translate_db_error הקיים.
-
-    זה נחוץ כי חלק מהמנהלים (למשל TreatmentManager, LeadManager)
-    לא עוטפים את עצמם ב-try/except כמו ClientManager - אז שכבת
-    ה-API היא זו שדואגת שהשרת לא יקרוס משגיאת DB לא צפויה.
-
-    operation - פונקציה ללא פרמטרים שמבצעת את הפעולה (למשל lambda)
-    context   - תיאור קצר לעברית, למשל "הוספת טיפול"
-
-    מחזיר (result, error_message). אם error_message אינו None -
-    הפעולה נכשלה ויש להציג אותו למשתמש.
-    """
-    try:
-        result = operation()
-        return result, None
-    except sqlite3.Error as error:
-        return None, translate_db_error(error, context)
-
-
-# ---- טיפול מרוכב (כמה טיפולים לאותו תור) - פונקציות עזר ----
-
-def parse_treatment_ids_from_json(data):
-    """
-    מפרש רשימת מזהי טיפולים מגוף בקשת JSON. תומך גם בטופס החדש
-    (treatment_ids - רשימה, לטיפול מרוכב) וגם בטופס הישן
-    (treatment_id - יחיד, לתאימות לאחור). מחזיר רשימת int, או
-    None אם לא נשלח כלום.
-    """
-    treatment_ids = data.get("treatment_ids")
-    if treatment_ids:
-        return [int(t) for t in treatment_ids]
-
-    treatment_id = data.get("treatment_id")
-    if treatment_id is not None:
-        return [int(treatment_id)]
-
-    return None
-
-
-def parse_treatment_ids_from_args(args):
-    """גרסה של הפונקציה הנ"ל לפרמטרים ב-query string (בקשות GET)"""
-    treatment_ids_param = args.get("treatment_ids", "")
-    if treatment_ids_param:
-        parts = [t.strip() for t in treatment_ids_param.split(",") if t.strip()]
-        if parts and all(t.isdigit() for t in parts):
-            return [int(t) for t in parts]
-        return None
-
-    treatment_id_param = args.get("treatment_id", "")
-    if treatment_id_param.isdigit():
-        return [int(treatment_id_param)]
-
-    return None
-
-
-def combo_fields_for_appointment(appointment_id, fallback_treatment_id):
-    """
-    שדות "טיפול מרוכב" משותפים לתגובות API של תור: רשימת מזהי
-    הטיפולים, שמותיהם, ומחיר/משך כולל (מחושבים דרך
-    AppointmentTreatmentManager - ראו שם את ההסבר המלא).
-    fallback_treatment_id משמש לתורים "רגילים" בלי רשומות בטבלת
-    הקישור (למשל תורים שנוצרו דרך main.py).
-    """
-    treatments = appointment_treatment_manager.get_treatments_for_appointment(
-        appointment_id, fallback_treatment_id
-    )
-    return {
-        "treatment_ids": [t.treatment_id for t in treatments],
-        "treatment_names": [t.treatment_name for t in treatments],
-        "total_price": sum(t.price for t in treatments),
-        "total_duration_minutes": sum(t.duration_minutes for t in treatments),
-    }
-
-
-# ---- המרת אובייקטי Entity למילונים (dict) לצורך JSON ----
-# כל ישות מקבלת פונקציית המרה משלה, כי לכל אחת שדות שונים.
-
-def appointment_to_dict(appointment):
-    result = {
-        "appointment_id": appointment.appointment_id,
-        "client_id": appointment.client_id,
-        "treatment_id": appointment.treatment_id,
-        "appointment_date": appointment.appointment_date,
-        "appointment_time": appointment.appointment_time,
-        "status": appointment.status,
-        "notes": appointment.notes,
-    }
-    result.update(combo_fields_for_appointment(appointment.appointment_id, appointment.treatment_id))
-    return result
-
-
-def appointment_row_to_dict(row):
-    """
-    ממיר שורת תוצאה מ-get_all_appointments_with_details (tuple)
-    למילון קריא. סדר העמודות בשאילתה:
-    (appointment_id, client_name, treatment_name, date, time, status)
-    """
-    return {
-        "appointment_id": row[0],
-        "client_name": row[1],
-        "treatment_name": row[2],
-        "appointment_date": row[3],
-        "appointment_time": row[4],
-        "status": row[5],
-    }
-
-
-def client_to_dict(client):
-    return {
-        "client_id": client.client_id,
-        "full_name": client.full_name,
-        "phone": client.phone,
-        "email": client.email,
-        "address": client.address,
-    }
-
-
-def treatment_to_dict(treatment):
-    return {
-        "treatment_id": treatment.treatment_id,
-        "treatment_name": treatment.treatment_name,
-        "body_area": treatment.body_area,
-        "price": treatment.price,
-        "duration_minutes": treatment.duration_minutes,
-    }
-
-
-def invoice_to_dict(invoice):
-    return {
-        "invoice_id": invoice.invoice_id,
-        "invoice_number": invoice.invoice_number,
-        "client_id": invoice.client_id,
-        "appointment_id": invoice.appointment_id,
-        "amount": invoice.amount,
-        "invoice_date": invoice.invoice_date,
-        "is_cancelled": bool(invoice.is_cancelled),
-        "cancelled_at": invoice.cancelled_at,
-    }
-
-
-def lead_to_dict(lead):
-    return {
-        "lead_id": lead.lead_id,
-        "full_name": lead.full_name,
-        "phone": lead.phone,
-        "source": lead.source,
-        "status": lead.status,
-        "notes": lead.notes,
-    }
+@app.route("/")
+def index():
+    """מגיש את עמוד ה-HTML הראשי מתוך תיקיית templates."""
+    return render_template("index.html")
 
 
 @app.after_request
 def add_no_cache_headers(response):
     """
-    מונע מהדפדפן לשמור תשובות API בזיכרון מטמון.
-    חשוב באפליקציית ניהול - תמיד רוצים נתונים עדכניים.
+    מונע מהדפדפן לשמור תשובות בזיכרון מטמון.
+    באפליקציית ניהול תמיד רוצים לראות נתונים עדכניים.
     """
     response.headers["Cache-Control"] = "no-store"
     return response
 
 
 # ============================================================
-# הגשת עמוד הבית (ה-SPA)
-# ============================================================
-
-@app.route("/")
-def index():
-    """מגיש את עמוד ה-HTML הראשי. Flask מחפש אותו אוטומטית ב-templates/"""
-    from flask import render_template
-    return render_template("index.html")
-
-
-# ============================================================
-# דשבורד - נתונים מסוכמים למסך הראשי
-# ============================================================
-
-@app.route("/api/dashboard")
-def get_dashboard():
-    """
-    מרכיב תמונת מצב יומית: תורים היום, מספר לקוחות, הכנסות החודש,
-    ולידים פתוחים. כל החישוב נעשה כאן בפייתון, מעל הנתונים
-    שמוחזרים ע"י ה-Managers הקיימים - בלי אף שאילתת SQL חדשה.
-    """
-    today = datetime.now().strftime("%Y-%m-%d")
-    current_month_prefix = datetime.now().strftime("%Y-%m")
-
-    # תורים של היום - מסננים מתוך הרשימה המלאה עם הפרטים
-    all_rows = appointment_manager.get_all_appointments_with_details()
-    today_rows = [row for row in all_rows if row[3] == today]
-
-    today_appointments = []
-    for row in today_rows:
-        appointment_id = row[0]
-        appointment = appointment_manager.get_appointment_by_id(appointment_id)
-        fallback_treatment_id = appointment.treatment_id if appointment else None
-        combo = combo_fields_for_appointment(appointment_id, fallback_treatment_id)
-
-        item = appointment_row_to_dict(row)
-        item["treatment_name"] = ", ".join(combo["treatment_names"]) or item["treatment_name"]
-        item.update(combo)
-        today_appointments.append(item)
-
-    # מספר לקוחות
-    clients_count = len(client_manager.get_all_clients())
-
-    # הכנסות החודש - סכום חשבוניות פעילות (לא מבוטלות) שתאריכן בחודש הנוכחי
-    active_invoices = invoice_manager.get_all_invoices(include_cancelled=False)
-    month_revenue = sum(
-        invoice.amount for invoice in active_invoices
-        if invoice.invoice_date.startswith(current_month_prefix)
-    )
-
-    # לידים פתוחים - סטטוס new או in_progress (is_active הקיים בישות Lead)
-    all_leads = lead_manager.get_all_leads()
-    open_leads = sum(1 for lead in all_leads if lead.is_active())
-
-    return jsonify({
-        "today_appointments": today_appointments,
-        "clients_count": clients_count,
-        "month_revenue": month_revenue,
-        "open_leads": open_leads,
-    })
-
-# ============================================================
 # הרצה
 # ============================================================
 
 if __name__ == "__main__":
-    # אותו אתחול שקורה ב-main.py - בטוח להריץ שוב ושוב (IF NOT EXISTS)
+    # אתחול המסד, בטוח להרצה חוזרת
     initialize_database()
 
-    # יצירת טבלת הקישור לטיפול מרוכב (ראו appointment_treatment_manager.py)
-    # בטוח להריץ שוב ושוב - IF NOT EXISTS
-    appointment_treatment_manager.ensure_table()
+    # יצירת טבלת הקישור לטיפול מרוכב, בטוח להרצה חוזרת
+    AppointmentTreatmentManager().ensure_table()
 
-    # מוודאים שיש קטלוג טיפולים - בלי זה אי אפשר לקבוע תורים
+    # ללא קטלוג טיפולים אי אפשר לקבוע תורים
+    treatment_manager = TreatmentManager()
     if len(treatment_manager.get_all_treatments()) == 0:
         treatment_manager.seed_catalog()
 
-    # host=127.0.0.1 - שרת מקומי בלבד, לא נגיש מרשת חיצונית
-    # פורט 5001 ולא 5000 - ב-macOS שירות AirPlay Receiver תופס את 5000 כברירת מחדל
+    # שרת מקומי בלבד. בפרודקשן נשתמש ב-gunicorn במקום זה.
+    # פורט 5001 ולא 5000 כי ב-macOS שירות AirPlay תופס את 5000
     app.run(host="127.0.0.1", port=5001, debug=True)
