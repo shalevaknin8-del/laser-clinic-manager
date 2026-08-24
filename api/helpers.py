@@ -13,6 +13,7 @@ import sqlite3
 from flask import jsonify
 
 from utils.db_errors import translate_db_error
+from managers.appointment_treatment_manager import AppointmentTreatmentManager
 
 
 # מקורות פנייה חוקיים לליד, אותה רשימה שמוצגת בתפריט ה-CLI
@@ -104,4 +105,66 @@ def treatment_to_dict(treatment):
         "body_area": treatment.body_area,
         "price": treatment.price,
         "duration_minutes": treatment.duration_minutes,
+    }
+
+
+
+# ============================================================
+# טיפול מרוכב (כמה טיפולים לאותו תור)
+# ============================================================
+
+# מנהל הקישור בין תור לטיפולים. מוגדר כאן כי גם התורים
+# וגם היסטוריית הלקוח צריכים את אותה לוגיקת חישוב
+appointment_treatment_manager = AppointmentTreatmentManager()
+
+
+def combo_fields_for_appointment(appointment_id, fallback_treatment_id):
+    """
+    מחזיר את שדות הטיפול המרוכב של תור: רשימת מזהי הטיפולים,
+    שמותיהם, והמחיר והמשך הכוללים.
+
+    fallback_treatment_id משמש לתורים רגילים שאין להם רשומות
+    בטבלת הקישור, למשל תורים שנוצרו דרך תפריט ה-CLI.
+    """
+    treatments = appointment_treatment_manager.get_treatments_for_appointment(
+        appointment_id, fallback_treatment_id
+    )
+    return {
+        "treatment_ids": [t.treatment_id for t in treatments],
+        "treatment_names": [t.treatment_name for t in treatments],
+        "total_price": sum(t.price for t in treatments),
+        "total_duration_minutes": sum(t.duration_minutes for t in treatments),
+    }
+
+
+def appointment_to_dict(appointment):
+    """ממיר אובייקט תור למילון, כולל שדות הטיפול המרוכב."""
+    result = {
+        "appointment_id": appointment.appointment_id,
+        "client_id": appointment.client_id,
+        "treatment_id": appointment.treatment_id,
+        "appointment_date": appointment.appointment_date,
+        "appointment_time": appointment.appointment_time,
+        "status": appointment.status,
+        "notes": appointment.notes,
+    }
+    result.update(
+        combo_fields_for_appointment(appointment.appointment_id, appointment.treatment_id)
+    )
+    return result
+
+
+def appointment_row_to_dict(row):
+    """
+    ממיר שורת תוצאה מהשאילתה המשולבת למילון קריא.
+    סדר העמודות בשאילתה:
+    (appointment_id, client_name, treatment_name, date, time, status)
+    """
+    return {
+        "appointment_id": row[0],
+        "client_name": row[1],
+        "treatment_name": row[2],
+        "appointment_date": row[3],
+        "appointment_time": row[4],
+        "status": row[5],
     }
