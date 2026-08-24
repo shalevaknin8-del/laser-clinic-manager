@@ -78,3 +78,18 @@ def lead_to_dict(lead):
         "status": lead.status,
         "notes": lead.notes,
     }
+
+
+
+def invoice_to_dict(invoice):
+    """ממיר אובייקט חשבונית למילון שניתן להחזיר כ-JSON."""
+    return {
+        "invoice_id": invoice.invoice_id,
+        "invoice_number": invoice.invoice_number,
+        "client_id": invoice.client_id,
+        "appointment_id": invoice.appointment_id,
+        "amount": invoice.amount,
+        "invoice_date": invoice.invoice_date,
+        "is_cancelled": bool(invoice.is_cancelled),
+        "cancelled_at": invoice.cancelled_at,
+    }
