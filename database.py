@@ -26,6 +26,13 @@ def get_connection():
     # ברירת המחדל של SQLite היא כבויה מסיבות היסטוריות
     connection.execute("PRAGMA foreign_keys = ON")
     
+    # מצב WAL - מפריד בין יומן הכתיבה לקובץ הראשי
+    # התוצאה: קריאות וכתיבות יכולות להתבצע במקביל בלי לחסום זו את זו
+    connection.execute("PRAGMA journal_mode = WAL")
+    
+    # ממתין עד 5 שניות אם הקובץ נעול במקום להיכשל מיד
+    connection.execute("PRAGMA busy_timeout = 5000")
+    
     return connection
 
 
