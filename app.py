@@ -62,6 +62,10 @@ app = Flask(__name__)
 # בבדיקה ידנית (curl / כלי פיתוח בדפדפן) הטקסט קריא כרגיל
 app.json.ensure_ascii = False
 
+# ---- חיבור קבוצות ה-routes (Blueprints) ----
+from api.leads_api import leads_bp
+app.register_blueprint(leads_bp)
+
 # בדיוק כמו ב-main.py: מופע אחד מכל מנהל, משותף לכל הבקשות
 appointment_manager = AppointmentManager()
 client_manager = ClientManager()
@@ -921,10 +925,6 @@ def restore_invoice(invoice_id):
 # API - לידים
 # ============================================================
 
-@app.route("/api/leads", methods=["GET"])
-def get_leads():
-    leads = lead_manager.get_all_leads()
-    return jsonify([lead_to_dict(lead) for lead in leads])
 
 
 @app.route("/api/leads", methods=["POST"])
