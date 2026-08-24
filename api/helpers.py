@@ -168,3 +168,45 @@ def appointment_row_to_dict(row):
         "appointment_time": row[4],
         "status": row[5],
     }
+
+
+
+# ============================================================
+# פירוש רשימת מזהי טיפולים מהבקשה
+# ============================================================
+
+def parse_treatment_ids_from_json(data):
+    """
+    מפרש רשימת מזהי טיפולים מגוף בקשת JSON.
+    תומך גם בטופס החדש עם רשימה לטיפול מרוכב, וגם בטופס הישן
+    עם מזהה יחיד לצורך תאימות לאחור.
+    מחזיר רשימת מספרים, או None אם לא נשלח כלום.
+    """
+    treatment_ids = data.get("treatment_ids")
+    if treatment_ids:
+        return [int(t) for t in treatment_ids]
+
+    treatment_id = data.get("treatment_id")
+    if treatment_id is not None:
+        return [int(treatment_id)]
+
+    return None
+
+
+def parse_treatment_ids_from_args(args):
+    """
+    אותה לוגיקה כמו הפונקציה שמעל, אבל עבור פרמטרים
+    שמגיעים בכתובת ה-URL בבקשות מסוג GET.
+    """
+    treatment_ids_param = args.get("treatment_ids", "")
+    if treatment_ids_param:
+        parts = [t.strip() for t in treatment_ids_param.split(",") if t.strip()]
+        if parts and all(t.isdigit() for t in parts):
+            return [int(t) for t in parts]
+        return None
+
+    treatment_id_param = args.get("treatment_id", "")
+    if treatment_id_param.isdigit():
+        return [int(treatment_id_param)]
+
+    return None
