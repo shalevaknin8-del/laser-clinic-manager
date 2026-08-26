@@ -28,6 +28,7 @@ from api.verification_api import verification_bp
 from api.auth_api import auth_bp
 from api.users_api import users_bp
 from api.chat_api import chat_bp
+from security_setup import apply_security
 
 
 app = Flask(__name__)
@@ -46,7 +47,6 @@ app.config["SESSION_COOKIE_HTTPONLY"] = Config.SESSION_COOKIE_HTTPONLY
 app.config["SESSION_COOKIE_SAMESITE"] = Config.SESSION_COOKIE_SAMESITE
 app.config["SESSION_COOKIE_SECURE"] = Config.SESSION_COOKIE_SECURE
 
-
 # ============================================================
 # חיבור קבוצות ה-routes
 # ============================================================
@@ -61,6 +61,10 @@ app.register_blueprint(verification_bp)
 app.register_blueprint(auth_bp)
 app.register_blueprint(users_bp)
 app.register_blueprint(chat_bp)
+
+# הקשחת אבטחה. חייב לרוץ אחרי רישום כל ה-Blueprints,
+# כדי שהמגבלות יחולו על ה-routes שכבר קיימים
+limiter = apply_security(app)
 
 
 # ============================================================
@@ -84,6 +88,7 @@ def index():
 
 @app.route("/login")
 def login_page():
+    
     """
     מגיש את מסך ההתחברות.
     מי שכבר מחובר מופנה ישירות לממשק.
@@ -95,6 +100,14 @@ def login_page():
         return redirect("/")
 
     return render_template("login.html")
+@app.route("/chat")
+def chat_page():
+    """
+    מגיש את ממשק הצ'אט ללקוחות.
+    העמוד פתוח בכוונה: הלקוחות אינן משתמשות במערכת
+    ואין להן חשבון. האימות מתבצע בתוך השיחה עצמה.
+    """
+    return render_template("chat.html")
 
 @app.after_request
 def add_no_cache_headers(response):
