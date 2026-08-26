@@ -24,6 +24,7 @@ from api.treatments_api import treatments_bp
 from api.invoices_api import invoices_bp
 from api.leads_api import leads_bp
 from api.dashboard_api import dashboard_bp
+from api.verification_api import verification_bp
 
 
 app = Flask(__name__)
@@ -43,6 +44,7 @@ app.register_blueprint(treatments_bp)
 app.register_blueprint(invoices_bp)
 app.register_blueprint(leads_bp)
 app.register_blueprint(dashboard_bp)
+app.register_blueprint(verification_bp)
 
 
 # ============================================================

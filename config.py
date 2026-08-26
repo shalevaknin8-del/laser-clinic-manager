@@ -58,6 +58,21 @@ class Config:
     # כתובת ה-API הפנימי שהצ'אטבוט פונה אליה
     INTERNAL_API_BASE_URL = os.getenv("INTERNAL_API_BASE_URL", "http://127.0.0.1:8000")
 
+        # ---------- ערוץ שליחת התראות ----------
+    # הערכים האפשריים: console (פיתוח) או email
+    NOTIFICATION_PROVIDER = os.getenv("NOTIFICATION_PROVIDER", "console")
+
+    SMTP_HOST = os.getenv("SMTP_HOST", "")
+    SMTP_PORT = os.getenv("SMTP_PORT", "587")
+    SMTP_USERNAME = os.getenv("SMTP_USERNAME", "")
+    SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+    SMTP_SENDER = os.getenv("SMTP_SENDER", "")
+
+    # ---------- מדיניות קוד אימות ----------
+    OTP_LENGTH = int(os.getenv("OTP_LENGTH", "6"))
+    OTP_EXPIRY_MINUTES = int(os.getenv("OTP_EXPIRY_MINUTES", "5"))
+    OTP_MAX_ATTEMPTS = int(os.getenv("OTP_MAX_ATTEMPTS", "3"))
+
     # ---------- מדיניות אימות ----------
     # מספר הניסיונות המותר להזנת תעודת זהות לפני חסימת השיחה
     MAX_VERIFICATION_ATTEMPTS = int(os.getenv("MAX_VERIFICATION_ATTEMPTS", "3"))
