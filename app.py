@@ -25,6 +25,7 @@ from api.invoices_api import invoices_bp
 from api.leads_api import leads_bp
 from api.dashboard_api import dashboard_bp
 from api.verification_api import verification_bp
+from api.auth_api import auth_bp
 
 
 app = Flask(__name__)
@@ -32,6 +33,16 @@ app = Flask(__name__)
 # מונע המרה של תווים עבריים לקודים בתגובות JSON,
 # כך שהטקסט קריא גם בבדיקה ידנית בכלי הפיתוח של הדפדפן
 app.json.ensure_ascii = False
+
+
+# טעינת הגדרות האבטחה מקובץ הסביבה
+from config import Config
+Config.validate()
+
+app.secret_key = Config.SECRET_KEY
+app.config["SESSION_COOKIE_HTTPONLY"] = Config.SESSION_COOKIE_HTTPONLY
+app.config["SESSION_COOKIE_SAMESITE"] = Config.SESSION_COOKIE_SAMESITE
+app.config["SESSION_COOKIE_SECURE"] = Config.SESSION_COOKIE_SECURE
 
 
 # ============================================================
@@ -45,6 +56,7 @@ app.register_blueprint(invoices_bp)
 app.register_blueprint(leads_bp)
 app.register_blueprint(dashboard_bp)
 app.register_blueprint(verification_bp)
+app.register_blueprint(auth_bp)
 
 
 # ============================================================
@@ -53,9 +65,32 @@ app.register_blueprint(verification_bp)
 
 @app.route("/")
 def index():
-    """מגיש את עמוד ה-HTML הראשי מתוך תיקיית templates."""
+    """
+    מגיש את ממשק הניהול.
+    מי שאינו מחובר מופנה למסך ההתחברות.
+    """
+    from auth.decorators import get_current_user
+    from flask import redirect
+
+    if get_current_user() is None:
+        return redirect("/login")
+
     return render_template("index.html")
 
+
+@app.route("/login")
+def login_page():
+    """
+    מגיש את מסך ההתחברות.
+    מי שכבר מחובר מופנה ישירות לממשק.
+    """
+    from auth.decorators import get_current_user
+    from flask import redirect
+
+    if get_current_user() is not None:
+        return redirect("/")
+
+    return render_template("login.html")
 
 @app.after_request
 def add_no_cache_headers(response):

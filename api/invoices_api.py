@@ -17,11 +17,19 @@ from managers.appointment_manager import AppointmentManager
 from utils.validators import validate_date, validate_positive_number
 
 from api.helpers import json_error, run_db_operation, invoice_to_dict
+from auth.decorators import get_current_user
+from flask import jsonify as _jsonify
 
 
 invoices_bp = Blueprint("invoices", __name__, url_prefix="/api/invoices")
 
 invoice_manager = InvoiceManager()
+
+@invoices_bp.before_request
+def require_authenticated_user():
+    """שער כניסה לכל נקודות הקצה של החשבוניות."""
+    if get_current_user() is None:
+        return _jsonify({"error": "נדרשת התחברות למערכת"}), 401
 
 # שני המנהלים האלה נחוצים רק לאימות שהלקוח והתור המקושרים קיימים
 client_manager = ClientManager()

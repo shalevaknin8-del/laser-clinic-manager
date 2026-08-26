@@ -24,6 +24,8 @@ from api.helpers import (
     client_to_dict,
     VALID_LEAD_SOURCES,
 )
+from auth.decorators import get_current_user
+from flask import jsonify as _jsonify
 
 
 # יצירת הקופסה. url_prefix קובע שכל route כאן מתחיל ב-/api/leads
@@ -31,6 +33,19 @@ leads_bp = Blueprint("leads", __name__, url_prefix="/api/leads")
 
 # מופע אחד של המנהל, משותף לכל הבקשות בקובץ הזה
 lead_manager = LeadManager()
+
+
+@leads_bp.before_request
+def require_authenticated_user():
+    """
+    שער כניסה לכל נקודות הקצה בקבוצה הזו.
+
+    זו הנקודה המרכזית של כל הריפקטור מיום 2: ההגנה נכתבת
+    פעם אחת וחלה על כל ה-routes, כולל כאלה שיתווספו בעתיד.
+    אי אפשר לשכוח להגן על endpoint חדש.
+    """
+    if get_current_user() is None:
+        return _jsonify({"error": "נדרשת התחברות למערכת"}), 401
 
 
 @leads_bp.route("", methods=["GET"])

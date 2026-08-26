@@ -15,11 +15,19 @@ from managers.treatment_manager import TreatmentManager
 from utils.validators import validate_positive_number
 
 from api.helpers import json_error, run_db_operation, treatment_to_dict
+from auth.decorators import get_current_user
+from flask import jsonify as _jsonify
 
 
 treatments_bp = Blueprint("treatments", __name__, url_prefix="/api/treatments")
 
 treatment_manager = TreatmentManager()
+
+@treatments_bp.before_request
+def require_authenticated_user():
+    """שער כניסה לכל נקודות הקצה של הטיפולים."""
+    if get_current_user() is None:
+        return _jsonify({"error": "נדרשת התחברות למערכת"}), 401
 
 
 def _validate_treatment_fields(treatment_name, body_area, price, duration_minutes):

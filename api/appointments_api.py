@@ -5,6 +5,8 @@ from managers.appointment_manager import AppointmentManager
 from managers.appointment_treatment_manager import AppointmentTreatmentManager
 from managers.client_manager import ClientManager
 from managers.treatment_manager import TreatmentManager
+from auth.decorators import get_current_user
+from flask import jsonify as _jsonify
 
 from utils.validators import (
     validate_date,
@@ -32,6 +34,11 @@ appointment_treatment_manager = AppointmentTreatmentManager()
 client_manager = ClientManager()
 treatment_manager = TreatmentManager()
 
+@appointments_bp.before_request
+def require_authenticated_user():
+    """שער כניסה לכל נקודות הקצה של התורים."""
+    if get_current_user() is None:
+        return _jsonify({"error": "נדרשת התחברות למערכת"}), 401
 
 @appointments_bp.route("", methods=["GET"])
 def get_appointments():

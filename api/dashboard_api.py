@@ -19,7 +19,8 @@ from managers.invoice_manager import InvoiceManager
 from managers.lead_manager import LeadManager
 
 from api.helpers import appointment_row_to_dict, combo_fields_for_appointment
-
+from auth.decorators import get_current_user
+from flask import jsonify as _jsonify
 
 dashboard_bp = Blueprint("dashboard", __name__, url_prefix="/api/dashboard")
 
@@ -27,6 +28,12 @@ appointment_manager = AppointmentManager()
 client_manager = ClientManager()
 invoice_manager = InvoiceManager()
 lead_manager = LeadManager()
+
+@dashboard_bp.before_request
+def require_authenticated_user():
+    """שער כניסה לנתוני המסך הראשי."""
+    if get_current_user() is None:
+        return _jsonify({"error": "נדרשת התחברות למערכת"}), 401
 
 
 @dashboard_bp.route("", methods=["GET"])
