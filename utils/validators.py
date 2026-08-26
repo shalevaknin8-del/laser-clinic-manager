@@ -248,3 +248,36 @@ def normalize_national_id(national_id):
     if not cleaned.isdigit():
         return None
     return cleaned.zfill(9)
+
+
+
+def normalize_phone(phone):
+    """
+    מחזיר מספר טלפון ישראלי בפורמט אחיד: 05XXXXXXXX.
+
+    הנרמול חיוני להתחברות. בלעדיו, משתמשת שנרשמה עם
+    0521234567 לא תזוהה כשתקליד 052-123-4567, למרות
+    שמדובר באותו מספר בדיוק.
+
+    מחזיר None אם המספר אינו תקין.
+    """
+    if not phone:
+        return None
+
+    # הסרת כל מה שאינו ספרה או סימן פלוס
+    cleaned = "".join(ch for ch in str(phone) if ch.isdigit() or ch == "+")
+
+    # המרת קידומת בינלאומית לפורמט מקומי
+    if cleaned.startswith("+972"):
+        cleaned = "0" + cleaned[4:]
+    elif cleaned.startswith("972"):
+        cleaned = "0" + cleaned[3:]
+
+    if not cleaned.isdigit():
+        return None
+
+    # מספר נייד ישראלי: עשר ספרות שמתחילות ב-05
+    if len(cleaned) != 10 or not cleaned.startswith("05"):
+        return None
+
+    return cleaned
