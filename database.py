@@ -2,17 +2,29 @@
 # database.py
 # ניהול חיבור לבסיס הנתונים SQLite
 # ============================================================
-
 import sqlite3
 from pathlib import Path
 
+from config import Config
 
-# נתיב לקובץ בסיס הנתונים
-DATABASE_PATH = Path("data/clinic.db")
+
+# תיקיית הבסיס של הפרויקט, מחושבת יחסית למיקום הקובץ הזה.
+# כך הנתיבים עובדים בלי קשר לתיקייה שממנה הורצה הפקודה
+BASE_DIR = Path(__file__).resolve().parent
+
+# נתיב לקובץ בסיס הנתונים, נקרא מקובץ הסביבה.
+# בפרודקשן הוא מצביע מחוץ לתיקיית הפרויקט, כדי ש-git pull
+# לא ידרוס את המסד של הקליניקה בעדכון קוד
+DATABASE_PATH = Path(Config.DATABASE_PATH)
+if not DATABASE_PATH.is_absolute():
+    DATABASE_PATH = BASE_DIR / DATABASE_PATH
+
+# יצירת התיקייה אם אינה קיימת, כדי שהמערכת תעלה
+# גם בהתקנה נקייה בלי הכנה ידנית
+DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 # נתיב לקובץ הסכמה
-SCHEMA_PATH = Path("schema.sql")
-
+SCHEMA_PATH = BASE_DIR / "schema.sql"
 
 def get_connection():
     """
