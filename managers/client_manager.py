@@ -313,3 +313,49 @@ class ClientManager:
 
         finally:
             connection.close()
+
+
+    def search_clients_by_name(self, name_query):
+        """
+        מחפש לקוחות לפי התאמה חלקית בשם.
+
+        החיפוש מוצא גם שם פרטי בלבד וגם שם משפחה בלבד,
+        כי הוא בודק הופעה בכל מקום במחרוזת השם המלא.
+
+        מחזיר רשימה של אובייקטי Client. רשימה ריקה אם אין התאמה.
+        """
+        if not name_query or not str(name_query).strip():
+            return []
+
+        cleaned_query = str(name_query).strip()
+
+        connection = get_connection()
+        cursor = connection.cursor()
+
+        try:
+            # הסימן % מציין תווים כלשהם לפני ואחרי הביטוי המבוקש.
+            # הערך מועבר כפרמטר ולא משורשר לתוך השאילתה,
+            # ולכן אין כאן חשיפה להזרקת SQL
+            search_pattern = f"%{cleaned_query}%"
+
+            cursor.execute(
+                "SELECT * FROM clients WHERE full_name LIKE ? ORDER BY full_name",
+                (search_pattern,),
+            )
+            rows = cursor.fetchall()
+
+            results = []
+            for row in rows:
+                client = Client(
+                    client_id=row[0],
+                    full_name=row[1],
+                    phone=row[2],
+                    email=row[3],
+                    address=row[4],
+                )
+                results.append(client)
+
+            return results
+
+        finally:
+            connection.close()

@@ -177,3 +177,36 @@ def delete_client(client_id):
         status_code = 404 if "לא נמצא" in (client_manager.last_error or "") else 409
         return json_error(client_manager.last_error, status_code=status_code)
     return jsonify({"success": True})
+
+
+
+@clients_bp.route("/search", methods=["GET"])
+def search_clients():
+    """
+    מחפש לקוחות לפי שם חלקי.
+
+    ה-endpoint הזה משמש את הצ'אטבוט לאיתור מועמדת לפי השם
+    שהלקוחה מסרה. הוא מחזיר את מספר ההתאמות כדי שהבוט יידע
+    אם עליו לבקש הבהרה במקום לנחש.
+
+    מבחינת פרטיות: מוחזרים רק שם ומזהה, בלי טלפון, מייל וכתובת.
+    בשלב החיפוש עדיין לא בוצע אימות, ולכן אין להחזיר פרטי קשר.
+    """
+    name_query = request.args.get("name", "")
+
+    if not name_query.strip():
+        return json_error("יש להזין שם לחיפוש", field="name")
+
+    matches = client_manager.search_clients_by_name(name_query)
+
+    # מבנה תגובה מצומצם בכוונה, ללא פרטים אישיים
+    results = [
+        {"client_id": client.client_id, "full_name": client.full_name}
+        for client in matches
+    ]
+
+    return jsonify({
+        "query": name_query.strip(),
+        "match_count": len(results),
+        "matches": results,
+    })
