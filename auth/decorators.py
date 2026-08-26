@@ -16,9 +16,25 @@ from flask import session, jsonify, g
 
 from managers.user_manager import UserManager
 from auth.permissions import get_permissions_for_role
+from managers.audit_manager import AuditManager, ACTION_PERMISSION_DENIED
 
 
 user_manager = UserManager()
+audit_manager = AuditManager()
+
+
+def get_client_ip():
+    """
+    מחזיר את כתובת ה-IP של הפונה.
+    מאחורי proxy כמו nginx, הכתובת האמיתית מגיעה בכותרת
+    X-Forwarded-For ולא בשדה remote_addr.
+    """
+    from flask import request
+
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.remote_addr
 
 # מפתח מזהה המשתמש בתוך העוגייה החתומה
 SESSION_USER_KEY = "user_id"
@@ -82,6 +98,14 @@ def require_permission(permission):
                 return jsonify({"error": "נדרשת התחברות למערכת"}), 401
 
             if permission not in get_permissions_for_role(user.role):
+                # ניסיון חריגה מהרשאות מתועד ביומן. זה מאפשר
+                # לזהות גם טעות בהגדרות וגם ניסיון שימוש לרעה
+                audit_manager.log(
+                    action=ACTION_PERMISSION_DENIED,
+                    user=user,
+                    details=permission,
+                    ip_address=get_client_ip(),
+                )
                 # ההודעה לא מפרטת איזו יכולת חסרה, כדי לא
                 # לחשוף את מבנה ההרשאות הפנימי של המערכת
                 return jsonify({"error": "אין לך הרשאה לבצע פעולה זו"}), 403

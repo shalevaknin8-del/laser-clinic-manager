@@ -17,6 +17,8 @@ from utils.validators import validate_positive_number
 from api.helpers import json_error, run_db_operation, treatment_to_dict
 from auth.decorators import get_current_user
 from flask import jsonify as _jsonify
+from auth.decorators import require_permission
+from auth.permissions import TREATMENT_EDIT
 
 
 treatments_bp = Blueprint("treatments", __name__, url_prefix="/api/treatments")
@@ -74,6 +76,7 @@ def seed_treatments():
 
 
 @treatments_bp.route("", methods=["POST"])
+@require_permission(TREATMENT_EDIT)
 def create_treatment():
     """מוסיף טיפול חדש לקטלוג."""
     data = request.get_json(silent=True) or {}
@@ -107,6 +110,7 @@ def create_treatment():
 
 
 @treatments_bp.route("/<int:treatment_id>", methods=["PUT"])
+@require_permission(TREATMENT_EDIT)
 def update_treatment(treatment_id):
     """מעדכן טיפול קיים בקטלוג."""
     existing = treatment_manager.get_treatment_by_id(treatment_id)

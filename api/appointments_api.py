@@ -7,6 +7,8 @@ from managers.client_manager import ClientManager
 from managers.treatment_manager import TreatmentManager
 from auth.decorators import get_current_user
 from flask import jsonify as _jsonify
+from auth.decorators import require_permission
+from auth.permissions import APPOINTMENT_DELETE
 
 from utils.validators import (
     validate_date,
@@ -266,6 +268,7 @@ def update_appointment(appointment_id):
 
 
 @appointments_bp.route("/<int:appointment_id>", methods=["DELETE"])
+@require_permission(APPOINTMENT_DELETE)
 def delete_appointment(appointment_id):
     """
     מוחק תור מהמערכת.

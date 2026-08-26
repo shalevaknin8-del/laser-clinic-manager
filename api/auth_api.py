@@ -15,12 +15,19 @@ from managers.user_manager import UserManager
 from auth.decorators import login_user, logout_user, get_current_user, require_login
 from auth.permissions import get_permissions_for_role
 from api.helpers import json_error
+from managers.audit_manager import (
+    AuditManager,
+    ACTION_LOGIN_SUCCESS,
+    ACTION_LOGIN_FAILED,
+    ACTION_LOGOUT,
+)
+from auth.decorators import get_client_ip
 
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/api/auth")
 
 user_manager = UserManager()
-
+audit_manager = AuditManager()
 
 def _user_to_dict(user):
     """
@@ -56,12 +63,25 @@ def login():
     user, reason = user_manager.authenticate(phone, password)
 
     if user is None:
+        # ניסיון כושל מתועד עם סיבת הכישלון ומספר הטלפון,
+        # כדי שאפשר יהיה לזהות ניסיון פריצה שיטתי
+        audit_manager.log(
+            action=ACTION_LOGIN_FAILED,
+            details=f"{reason} / {phone}",
+            ip_address=get_client_ip(),
+        )
         # חשבון נעול מקבל הודעה מפורשת, כי המשתמשת חייבת
         # לדעת שאין טעם להמשיך לנסות באותו רגע
         status_code = 423 if reason == "locked" else 401
         return json_error(user_manager.last_error, status_code=status_code)
 
     login_user(user)
+
+    audit_manager.log(
+        action=ACTION_LOGIN_SUCCESS,
+        user=user,
+        ip_address=get_client_ip(),
+    )
 
     return jsonify({
         "success": True,
@@ -72,11 +92,17 @@ def login():
 @auth_bp.route("/logout", methods=["POST"])
 def logout():
     """סוגר את ה-session הנוכחי."""
+    user = get_current_user()
+
+    if user is not None:
+        audit_manager.log(
+            action=ACTION_LOGOUT,
+            user=user,
+            ip_address=get_client_ip(),
+        )
+
     logout_user()
     return jsonify({"success": True})
-
-
-@auth_bp.route("/me", methods=["GET"])
 def get_me():
     """
     מחזיר את המשתמש המחובר ואת היכולות שלו.

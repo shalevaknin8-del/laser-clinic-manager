@@ -26,6 +26,7 @@ from api.leads_api import leads_bp
 from api.dashboard_api import dashboard_bp
 from api.verification_api import verification_bp
 from api.auth_api import auth_bp
+from api.users_api import users_bp
 
 
 app = Flask(__name__)
@@ -57,6 +58,7 @@ app.register_blueprint(leads_bp)
 app.register_blueprint(dashboard_bp)
 app.register_blueprint(verification_bp)
 app.register_blueprint(auth_bp)
+app.register_blueprint(users_bp)
 
 
 # ============================================================

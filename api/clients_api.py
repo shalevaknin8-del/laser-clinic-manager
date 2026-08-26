@@ -15,6 +15,8 @@ from managers.invoice_manager import InvoiceManager
 
 from utils.validators import validate_name, validate_phone, validate_email
 from auth.decorators import get_current_user
+from auth.decorators import require_permission
+from auth.permissions import CLIENT_DELETE
 from flask import jsonify as _jsonify
 
 from api.helpers import (
@@ -174,6 +176,7 @@ def update_client(client_id):
 
 
 @clients_bp.route("/<int:client_id>", methods=["DELETE"])
+@require_permission(CLIENT_DELETE)
 def delete_client(client_id):
     """
     מוחק לקוח.

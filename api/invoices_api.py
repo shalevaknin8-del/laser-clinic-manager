@@ -19,6 +19,8 @@ from utils.validators import validate_date, validate_positive_number
 from api.helpers import json_error, run_db_operation, invoice_to_dict
 from auth.decorators import get_current_user
 from flask import jsonify as _jsonify
+from auth.decorators import require_permission
+from auth.permissions import INVOICE_CANCEL
 
 
 invoices_bp = Blueprint("invoices", __name__, url_prefix="/api/invoices")
@@ -95,6 +97,7 @@ def create_invoice():
 
 
 @invoices_bp.route("/<int:invoice_id>/cancel", methods=["POST"])
+@require_permission(INVOICE_CANCEL)
 def cancel_invoice(invoice_id):
     """
     מבטל חשבונית בביטול רך בלבד.
@@ -115,6 +118,7 @@ def cancel_invoice(invoice_id):
 
 
 @invoices_bp.route("/<int:invoice_id>/restore", methods=["POST"])
+@require_permission(INVOICE_CANCEL)
 def restore_invoice(invoice_id):
     """משחזר חשבונית שבוטלה בטעות."""
     invoice = invoice_manager.get_invoice_by_id(invoice_id)
