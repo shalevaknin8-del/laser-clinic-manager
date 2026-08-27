@@ -4,183 +4,74 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>כניסה למערכת - קליניקת לייזר</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-
-        body {
-            font-family: -apple-system, "Segoe UI", Arial, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-        }
-
-        .login-card {
-            background: #fff;
-            border-radius: 16px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
-            padding: 40px;
-            width: 100%;
-            max-width: 400px;
-        }
-
-        .login-title {
-            font-size: 24px;
-            font-weight: 600;
-            color: #2d3748;
-            text-align: center;
-            margin-bottom: 8px;
-        }
-
-        .login-subtitle {
-            font-size: 14px;
-            color: #718096;
-            text-align: center;
-            margin-bottom: 32px;
-        }
-
-        .field { margin-bottom: 20px; }
-
-        .field label {
-            display: block;
-            font-size: 14px;
-            font-weight: 500;
-            color: #4a5568;
-            margin-bottom: 6px;
-        }
-
-        .field input {
-            width: 100%;
-            padding: 12px 14px;
-            font-size: 16px;
-            border: 1px solid #cbd5e0;
-            border-radius: 8px;
-            font-family: inherit;
-        }
-
-        .field input:focus {
-            outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
-        }
-
-        .submit-button {
-            width: 100%;
-            padding: 13px;
-            font-size: 16px;
-            font-weight: 600;
-            color: #fff;
-            background: #667eea;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            font-family: inherit;
-            margin-top: 8px;
-        }
-
-        .submit-button:hover { background: #5a67d8; }
-        .submit-button:disabled { background: #a0aec0; cursor: not-allowed; }
-
-        .error-message {
-            background: #fed7d7;
-            color: #822727;
-            padding: 12px 14px;
-            border-radius: 8px;
-            font-size: 14px;
-            margin-bottom: 20px;
-            display: none;
-        }
-
-        .error-message.visible { display: block; }
-    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@200..800&family=Plus+Jakarta+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
+    <div class="login-page">
+        <div class="login-card">
+            <div class="login-logo">
+                <div class="brand-mark" style="width:44px;height:44px;"><span style="width:13px;height:13px;"></span></div>
+                <div style="text-align:center;">
+                    <div style="font-size:17px;font-weight:600;">קליניקת לייזר</div>
+                    <div class="text-sm text-muted">כניסת צוות</div>
+                </div>
+            </div>
 
-    <div class="login-card">
-        <h1 class="login-title">קליניקת לייזר</h1>
-        <p class="login-subtitle">כניסה למערכת הניהול</p>
-
-        <div class="error-message" id="errorMessage"></div>
-
-        <div class="field">
-            <label for="phoneInput">מספר טלפון</label>
-            <input type="tel" id="phoneInput" placeholder="05XXXXXXXX" autocomplete="username">
+            <div class="field">
+                <label>מספר טלפון</label>
+                <input type="tel" id="phone" class="ltr" autocomplete="username" placeholder="0501234567">
+            </div>
+            <div class="field">
+                <label>סיסמה</label>
+                <input type="password" id="password" autocomplete="current-password">
+            </div>
+            <div id="loginError" class="field-error" style="margin-bottom:10px;"></div>
+            <button class="btn btn-primary" id="loginBtn" style="width:100%;justify-content:center;">התחברות</button>
         </div>
-
-        <div class="field">
-            <label for="passwordInput">סיסמה</label>
-            <input type="password" id="passwordInput" autocomplete="current-password">
-        </div>
-
-        <button class="submit-button" id="submitButton">כניסה</button>
     </div>
 
 <script>
-    const phoneInput = document.getElementById("phoneInput");
-    const passwordInput = document.getElementById("passwordInput");
-    const submitButton = document.getElementById("submitButton");
-    const errorMessage = document.getElementById("errorMessage");
+    const ACCESS_KEY = "clinic_access_token";
+    const REFRESH_KEY = "clinic_refresh_token";
 
-    function showError(text) {
-        errorMessage.textContent = text;
-        errorMessage.classList.add("visible");
+    if (localStorage.getItem(ACCESS_KEY)) {
+        window.location.href = "/";
     }
 
-    function hideError() {
-        errorMessage.classList.remove("visible");
-    }
+    const phoneInput = document.getElementById("phone");
+    const passwordInput = document.getElementById("password");
+    const errorEl = document.getElementById("loginError");
+    const loginBtn = document.getElementById("loginBtn");
 
-    async function attemptLogin() {
-        hideError();
-
-        const phone = phoneInput.value.trim();
-        const password = passwordInput.value;
-
-        if (!phone || !password) {
-            showError("יש להזין מספר טלפון וסיסמה");
-            return;
-        }
-
-        submitButton.disabled = true;
-        submitButton.textContent = "מתחבר...";
-
+    async function doLogin() {
+        errorEl.textContent = "";
+        loginBtn.disabled = true;
         try {
             const response = await fetch("/api/auth/login", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ phone: phone, password: password })
+                body: JSON.stringify({ phone: phoneInput.value, password: passwordInput.value }),
             });
-
             const data = await response.json();
-
-            if (response.ok && data.success) {
-                window.location.href = "/";
+            if (!response.ok) {
+                errorEl.textContent = data.error || "שגיאה בהתחברות";
                 return;
             }
-
-            showError(data.error || "ההתחברות נכשלה");
-
-        } catch (error) {
-            showError("שגיאת תקשורת, יש לנסות שוב");
+            localStorage.setItem(ACCESS_KEY, data.access_token);
+            localStorage.setItem(REFRESH_KEY, data.refresh_token);
+            window.location.href = "/";
+        } catch (e) {
+            errorEl.textContent = "שגיאת תקשורת, אפשר לנסות שוב?";
+        } finally {
+            loginBtn.disabled = false;
         }
-
-        submitButton.disabled = false;
-        submitButton.textContent = "כניסה";
     }
 
-    submitButton.addEventListener("click", attemptLogin);
-
-    // מאפשר התחברות בלחיצת Enter מכל אחד משדות הטופס
-    [phoneInput, passwordInput].forEach(function (field) {
-        field.addEventListener("keydown", function (event) {
-            if (event.key === "Enter") attemptLogin();
-        });
-    });
-
-    phoneInput.focus();
+    loginBtn.addEventListener("click", doLogin);
+    passwordInput.addEventListener("keydown", (e) => { if (e.key === "Enter") doLogin(); });
 </script>
-
 </body>
 </html>

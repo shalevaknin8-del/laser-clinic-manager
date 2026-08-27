@@ -3,169 +3,75 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>קליניקת לייזר - בירור תורים</title>
+    <title>קליניקת לייזר - בירור וקביעת תורים</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@200..800&family=Plus+Jakarta+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --bg: #FAF9F6; --ink: #2C2C2C; --muted: #6E6A63; --muted-3: #A9A59C;
+            --gold: #B99A64; --gold-bar: #C9AC79; --gold-ink: #A8874F; --gold-bg: #F5F0E6;
+            --border: rgba(44,44,44,0.08);
+        }
         * { margin: 0; padding: 0; box-sizing: border-box; }
-
         body {
-            font-family: -apple-system, "Segoe UI", Arial, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
+            font-family: 'Assistant', 'Segoe UI', sans-serif;
+            background: var(--bg);
+            height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px;
         }
-
         .chat-window {
-            background: #fff;
-            border-radius: 16px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
-            width: 100%;
-            max-width: 480px;
-            height: 100%;
-            max-height: 700px;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
+            background: #fff; border-radius: 20px;
+            box-shadow: 0 1px 2px rgba(44,44,44,0.03), 0 24px 60px rgba(44,44,44,0.12);
+            width: 100%; max-width: 480px; height: 100%; max-height: 700px;
+            display: flex; flex-direction: column; overflow: hidden;
         }
-
         .chat-header {
-            background: #5a67d8;
-            color: #fff;
-            padding: 18px 20px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
+            background: linear-gradient(150deg, var(--gold-bar), var(--gold-ink));
+            color: #fff; padding: 20px 22px;
+            display: flex; align-items: center; justify-content: space-between;
         }
-
         .chat-header h1 { font-size: 17px; font-weight: 600; }
-        .chat-header p { font-size: 12px; opacity: 0.85; margin-top: 2px; }
-
+        .chat-header p { font-size: 12px; opacity: 0.9; margin-top: 2px; }
         .reset-button {
-            background: rgba(255, 255, 255, 0.18);
-            color: #fff;
-            border: none;
-            border-radius: 6px;
-            padding: 7px 12px;
-            font-size: 13px;
-            cursor: pointer;
-            font-family: inherit;
+            background: rgba(255,255,255,0.22); color: #fff; border: none; border-radius: 8px;
+            padding: 7px 12px; font-size: 13px; cursor: pointer; font-family: inherit;
         }
-
-        .reset-button:hover { background: rgba(255, 255, 255, 0.3); }
-
-        .messages {
-            flex: 1;
-            overflow-y: auto;
-            padding: 20px;
-            background: #f7fafc;
-        }
-
+        .reset-button:hover { background: rgba(255,255,255,0.35); }
+        .messages { flex: 1; overflow-y: auto; padding: 22px; background: var(--bg); }
         .bubble {
-            max-width: 82%;
-            padding: 11px 15px;
-            border-radius: 16px;
-            margin-bottom: 12px;
-            font-size: 15px;
-            line-height: 1.5;
-            white-space: pre-wrap;
-            word-wrap: break-word;
+            max-width: 82%; padding: 12px 16px; border-radius: 16px; margin-bottom: 12px;
+            font-size: 15px; line-height: 1.55; white-space: pre-wrap; word-wrap: break-word;
         }
-
         .bubble.bot {
-            background: #fff;
-            color: #2d3748;
-            border: 1px solid #e2e8f0;
-            border-bottom-right-radius: 4px;
-            margin-left: auto;
-            margin-right: 0;
+            background: #fff; color: var(--ink); border: 1px solid var(--border);
+            border-bottom-right-radius: 4px; margin-left: auto; margin-right: 0;
         }
-
         .bubble.user {
-            background: #5a67d8;
-            color: #fff;
-            border-bottom-left-radius: 4px;
-            margin-right: auto;
-            margin-left: 0;
+            background: var(--ink); color: #fff;
+            border-bottom-left-radius: 4px; margin-right: auto; margin-left: 0;
         }
-
         .typing {
-            display: none;
-            gap: 4px;
-            padding: 12px 16px;
-            width: fit-content;
-            margin-left: auto;
-            background: #fff;
-            border: 1px solid #e2e8f0;
-            border-radius: 16px;
-            margin-bottom: 12px;
+            display: none; gap: 4px; padding: 12px 16px; width: fit-content; margin: 0 22px 12px auto;
+            background: #fff; border: 1px solid var(--border); border-radius: 16px;
         }
-
         .typing.visible { display: flex; }
-
-        .typing span {
-            width: 7px;
-            height: 7px;
-            background: #a0aec0;
-            border-radius: 50%;
-            animation: bounce 1.3s infinite;
-        }
-
+        .typing span { width: 7px; height: 7px; background: var(--muted-3); border-radius: 50%; animation: bounce 1.3s infinite; }
         .typing span:nth-child(2) { animation-delay: 0.2s; }
         .typing span:nth-child(3) { animation-delay: 0.4s; }
-
-        @keyframes bounce {
-            0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
-            30% { transform: translateY(-5px); opacity: 1; }
-        }
-
-        .composer {
-            display: flex;
-            gap: 10px;
-            padding: 14px;
-            background: #fff;
-            border-top: 1px solid #e2e8f0;
-        }
-
+        @keyframes bounce { 0%, 60%, 100% { transform: translateY(0); opacity: .5; } 30% { transform: translateY(-5px); opacity: 1; } }
+        .composer { display: flex; gap: 10px; padding: 16px; background: #fff; border-top: 1px solid var(--border); }
         .composer input {
-            flex: 1;
-            padding: 11px 14px;
-            font-size: 15px;
-            border: 1px solid #cbd5e0;
-            border-radius: 22px;
-            font-family: inherit;
+            flex: 1; padding: 12px 15px; font-size: 15px; border: 1px solid rgba(44,44,44,0.14);
+            border-radius: 24px; font-family: inherit; background: #FCFAF6;
         }
-
-        .composer input:focus {
-            outline: none;
-            border-color: #5a67d8;
-        }
-
+        .composer input:focus { outline: none; border-color: var(--gold-bar); }
         .send-button {
-            background: #5a67d8;
-            color: #fff;
-            border: none;
-            border-radius: 22px;
-            padding: 0 22px;
-            font-size: 15px;
-            font-weight: 500;
-            cursor: pointer;
-            font-family: inherit;
+            background: var(--ink); color: #fff; border: none; border-radius: 24px;
+            padding: 0 22px; font-size: 15px; font-weight: 500; cursor: pointer; font-family: inherit;
         }
-
-        .send-button:hover { background: #4c51bf; }
-        .send-button:disabled { background: #a0aec0; cursor: not-allowed; }
-
-        .locked-notice {
-            display: none;
-            background: #fed7d7;
-            color: #822727;
-            padding: 11px;
-            text-align: center;
-            font-size: 14px;
-        }
-
+        .send-button:hover { background: #3D3B37; }
+        .send-button:disabled { background: #C7C3BB; cursor: not-allowed; }
+        .locked-notice { display: none; background: #F8ECEE; color: #B4485A; padding: 12px; text-align: center; font-size: 14px; }
         .locked-notice.visible { display: block; }
     </style>
 </head>
@@ -175,7 +81,7 @@
         <div class="chat-header">
             <div>
                 <h1>קליניקת לייזר</h1>
-                <p>בירור פרטי תור</p>
+                <p>בירור וקביעת תורים</p>
             </div>
             <button class="reset-button" id="resetButton">שיחה חדשה</button>
         </div>
@@ -277,7 +183,7 @@
     function showWelcome() {
         addBubble(
             "שלום, אני העוזר הדיגיטלי של הקליניקה.\n" +
-            "אפשר לבדוק כאן פרטי תור קיים.\n" +
+            "אפשר לבדוק כאן פרטי תור קיים, ואפילו לקבוע תור חדש.\n" +
             "איך קוראים לך?",
             "bot"
         );

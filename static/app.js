@@ -1,1429 +1,1716 @@
 // ============================================================
 // static/app.js
-// לוגיקת צד לקוח - מחברת בין templates/index.html ל-API של app.py.
+// לוגיקת צד הלקוח של ממשק הניהול - SPA פשוט מבוסס hash routing.
 //
-// הקובץ מאורגן לפי סדר קריאה הגיוני:
-//   1. קבועים (תוויות בעברית לסטטוסים/מקורות)
-//   2. פונקציות עזר כלליות (DOM, אבטחה, פורמט)
-//   3. מערכת Toast (הודעות חולפות)
-//   4. מערכת מודלים + דיאלוג אישור כללי
-//   5. עטיפת fetch ל-API
-//   6. ניהול מצב טבלה (טעינה / נתונים / ריק)
-//   7. ולידציה בצד לקוח (מקבילה ל-utils/validators.py בפייתון)
-//   8. ניווט בין 6 המסכים
-//   9. לוגיקת כל מסך: דשבורד, תורים, לקוחות, טיפולים, חשבוניות, לידים
-//   10. אתחול (init) - מחבר הכל כשהדף נטען
-//
-// עקרון מרכזי: הקובץ הזה לא כותב שום SQL ולא נוגע ב-DB ישירות.
-// כל בקשה עוברת fetch ל-app.py, וזה שקורא ל-Managers.
+// אימות: JWT ולא session cookie (ראו auth/decorators.py). הטוקנים
+// נשמרים ב-localStorage, ומצורפים כ-Authorization: Bearer בכל
+// קריאה. apiFetch מטפל ברענון אוטומטי כשה-access token פג.
 // ============================================================
 
-'use strict';
+const ACCESS_KEY = "clinic_access_token";
+const REFRESH_KEY = "clinic_refresh_token";
 
-
-// ============================================================
-// 1. קבועים - תוויות בעברית ומיפוי צבעים לפי סטטוס
-// ============================================================
-
-// תוויות סטטוס - משותפות לתורים ולידים (המחלקות badge-* מוגדרות ב-CSS)
-const STATUS_LABELS = {
-    pending: 'ממתין',
-    completed: 'הושלם',
-    cancelled: 'בוטל',
-    new: 'חדש',
-    in_progress: 'בטיפול',
-    converted: 'הומר ללקוח',
-    rejected: 'נדחה',
+const state = {
+    user: null,
+    route: "dashboard",
+    treatments: [],
+    rooms: [],
+    machines: [],
+    staff: [],
 };
 
-// תוויות מקור ליד - תואם בדיוק לרשימה הקבועה ב-app.py (VALID_LEAD_SOURCES)
-const SOURCE_LABELS = {
-    facebook: 'פייסבוק',
-    instagram: 'אינסטגרם',
-    google: 'גוגל',
-    referral: 'הפניה',
-    walk_in: 'הליכה חופשית',
-};
-
-// מטמון מקומי - נשמר כדי לא לשלוח בקשת API בכל פעולה קטנה
-// (למשל חיפוש לקוח, או מציאת פרטי טיפול לעריכה)
-// מתעדכן מחדש בכל טעינה של המסך המתאים
-let clientsCache = [];
-let treatmentsCache = [];
-let leadsCache = [];
-
-// מזהה הפעולה שתתבצע אם המשתמש ילחץ "אישור" בדיאלוג האישור הכללי
-let pendingConfirmAction = null;
-
-
 // ============================================================
-// 2. פונקציות עזר כלליות
+// API client
 // ============================================================
 
-function qs(selector, root) {
-    return (root || document).querySelector(selector);
+function getAccessToken() { return localStorage.getItem(ACCESS_KEY); }
+function getRefreshToken() { return localStorage.getItem(REFRESH_KEY); }
+
+function setTokens(access, refresh) {
+    localStorage.setItem(ACCESS_KEY, access);
+    if (refresh) localStorage.setItem(REFRESH_KEY, refresh);
 }
 
-function qsa(selector, root) {
-    return Array.from((root || document).querySelectorAll(selector));
+function clearTokens() {
+    localStorage.removeItem(ACCESS_KEY);
+    localStorage.removeItem(REFRESH_KEY);
 }
 
-// ממיר טקסט חופשי ל-HTML בטוח - מונע החדרת קוד (XSS) כשמציגים
-// שמות/הערות שהוזנו ע"י המשתמש בתוך innerHTML
-function escapeHtml(value) {
-    const div = document.createElement('div');
-    div.textContent = value === null || value === undefined ? '' : String(value);
-    return div.innerHTML;
-}
+async function refreshAccessToken() {
+    const refreshToken = getRefreshToken();
+    if (!refreshToken) return false;
 
-// עיצוב סכום כספי אחיד לכל האתר: "250 ש"ח"
-function formatCurrency(amount) {
-    const number = Number(amount) || 0;
-    return `${number.toLocaleString('he-IL')} ש"ח`;
-}
-
-// תאריך היום בפורמט YYYY-MM-DD - ברירת מחדל נוחה בטופס חשבונית
-function todayIso() {
-    const now = new Date();
-    const pad = (n) => String(n).padStart(2, '0');
-    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-}
-
-// בונה תג <span class="badge"> צבעוני לפי סטטוס
-function renderStatusBadge(status) {
-    const label = STATUS_LABELS[status] || status;
-    return `<span class="badge badge-${escapeHtml(status)}">${escapeHtml(label)}</span>`;
-}
-
-
-// ============================================================
-// 3. מערכת Toast - הודעות הצלחה/שגיאה שנעלמות לבד
-// ============================================================
-
-function showToast(message, type) {
-    const container = qs('#toast-container');
-    const toast = document.createElement('div');
-    toast.className = `toast toast-${type === 'error' ? 'error' : 'success'}`;
-    toast.textContent = message;
-    container.appendChild(toast);
-
-    // אחרי 3.2 שניות - דוהה ונעלם, ואז מוסר מה-DOM
-    setTimeout(() => {
-        toast.style.opacity = '0';
-        setTimeout(() => toast.remove(), 200);
-    }, 3200);
-}
-
-
-// ============================================================
-// 4. מערכת מודלים + דיאלוג אישור כללי
-// ============================================================
-
-function openModal(modalId) {
-    qs('#' + modalId).hidden = false;
-}
-
-function closeModal(modalId) {
-    qs('#' + modalId).hidden = true;
-}
-
-// מציג את דיאלוג האישור הכללי עם כותרת/הודעה מותאמות, ומריץ
-// את onConfirm רק אם המשתמש באמת לחץ "אישור"
-function showConfirm(title, message, onConfirm) {
-    qs('#confirm-title').textContent = title;
-    qs('#confirm-message').textContent = message;
-    pendingConfirmAction = onConfirm;
-    openModal('confirm-dialog');
-}
-
-function wireModalsAndConfirm() {
-    // כל כפתור סגירה (X או "ביטול") מצביע דרך data-close-modal על ה-id שיש לסגור
-    qsa('[data-close-modal]').forEach((btn) => {
-        btn.addEventListener('click', () => closeModal(btn.dataset.closeModal));
+    const response = await fetch("/api/auth/refresh", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh_token: refreshToken }),
     });
 
-    // לחיצה על הרקע הכהה מחוץ לתיבה עצמה - סוגרת את המודל
-    qsa('.modal-overlay').forEach((overlay) => {
-        overlay.addEventListener('click', (event) => {
-            if (event.target === overlay) {
-                closeModal(overlay.id);
-            }
-        });
-    });
+    if (!response.ok) return false;
+    const data = await response.json();
+    setTokens(data.access_token, null);
+    return true;
+}
 
-    // מקש Escape סוגר את המודל הפתוח כרגע (אם יש)
-    document.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape') {
-            const openOverlay = qs('.modal-overlay:not([hidden])');
-            if (openOverlay) {
-                closeModal(openOverlay.id);
-            }
+/**
+ * עוטף fetch רגיל: מצרף Bearer token, ומנסה רענון פעם אחת אם
+ * הבקשה חוזרת עם 401 (access token פג באמצע העבודה).
+ */
+async function apiFetch(path, options = {}) {
+    const doFetch = () => {
+        const headers = Object.assign({}, options.headers || {});
+        const token = getAccessToken();
+        if (token) headers["Authorization"] = "Bearer " + token;
+        if (options.body && !(options.body instanceof FormData) && !headers["Content-Type"]) {
+            headers["Content-Type"] = "application/json";
         }
-    });
+        return fetch(path, Object.assign({}, options, { headers }));
+    };
 
-    // כפתורי דיאלוג האישור עצמו
-    qs('#confirm-cancel-btn').addEventListener('click', () => {
-        pendingConfirmAction = null;
-        closeModal('confirm-dialog');
-    });
+    let response = await doFetch();
 
-    qs('#confirm-ok-btn').addEventListener('click', async () => {
-        const action = pendingConfirmAction;
-        pendingConfirmAction = null;
-        closeModal('confirm-dialog');
-        if (action) {
-            await action();
+    if (response.status === 401 && getRefreshToken()) {
+        const refreshed = await refreshAccessToken();
+        if (refreshed) {
+            response = await doFetch();
         }
-    });
-}
-
-
-// ============================================================
-// 5. עטיפת fetch ל-API
-// כל הבקשות ל-app.py עוברות דרך הפונקציה הזאת, כדי שכל הטיפול
-// בשגיאות (ולידציה / התנגשות / שרת) יהיה במקום אחד
-// ============================================================
-
-async function apiRequest(method, path, body) {
-    const options = { method, headers: {} };
-
-    if (body !== undefined) {
-        options.headers['Content-Type'] = 'application/json';
-        options.body = JSON.stringify(body);
     }
 
-    const response = await fetch(path, options);
-
-    // תגובות ללא גוף (למשל DELETE שמצליח) עדיין ננסה לפרש בזהירות
-    let data = null;
-    try {
-        data = await response.json();
-    } catch (error) {
-        data = null;
+    if (response.status === 401) {
+        clearTokens();
+        window.location.href = "/login";
+        throw new Error("not authenticated");
     }
 
+    return response;
+}
+
+async function apiJson(path, options = {}) {
+    const response = await apiFetch(path, options);
+    const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-        // app.py תמיד מחזיר {"error": "...", "field": "..."} בכשלון
-        const message = (data && data.error) || 'שגיאה לא צפויה בתקשורת עם השרת';
-        const apiError = new Error(message);
-        apiError.field = data ? data.field : undefined;
-        apiError.status = response.status;
-        throw apiError;
+        const error = new Error(data.error || "שגיאה לא צפויה");
+        error.field = data.field;
+        error.status = response.status;
+        error.payload = data;
+        throw error;
     }
-
     return data;
 }
 
-
 // ============================================================
-// 6. ניהול מצב טבלה - טעינה / נתונים / ריק
-// כל טבלה במערכת עוברת בין 3 מצבים אלו לפי data-table/-loading-for/-empty-for
+// UI helpers: toasts, modal, confirm
 // ============================================================
 
-function getTableElements(name) {
-    const table = qs(`[data-table="${name}"]`);
-    return {
-        spinner: qs(`[data-loading-for="${name}"]`),
-        tableWrap: table ? table.closest('.table-wrap') : null,
-        tbody: table ? table.querySelector('tbody') : null,
-        empty: qs(`[data-empty-for="${name}"]`),
-    };
+function toast(message, kind) {
+    const stack = document.getElementById("toastStack");
+    const el = document.createElement("div");
+    el.className = "toast" + (kind ? " " + kind : "");
+    el.textContent = message;
+    stack.appendChild(el);
+    setTimeout(() => el.remove(), 3600);
 }
 
-function setTableLoading(name) {
-    const els = getTableElements(name);
-    if (els.spinner) els.spinner.hidden = false;
-    if (els.tableWrap) els.tableWrap.style.display = 'none';
-    if (els.empty) els.empty.hidden = true;
+function escapeHtml(value) {
+    if (value === null || value === undefined) return "";
+    return String(value)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-// hasRows קובע אם מציגים את הטבלה עצמה או את מצב ה"ריק" המעוצב
-function setTableResult(name, hasRows) {
-    const els = getTableElements(name);
-    if (els.spinner) els.spinner.hidden = true;
-    if (els.tableWrap) els.tableWrap.style.display = hasRows ? '' : 'none';
-    if (els.empty) els.empty.hidden = hasRows;
+function formatDateHe(isoDate) {
+    if (!isoDate || isoDate.length !== 10) return isoDate || "";
+    const [y, m, d] = isoDate.split("-");
+    return `${d}.${m}.${y}`;
 }
 
+function todayIso() {
+    return new Date().toISOString().slice(0, 10);
+}
 
 // ============================================================
-// 7. ולידציה בצד לקוח
-// מקבילה מכוונת לפונקציות ב-utils/validators.py, כדי לתת משוב
-// מיידי בלי לחכות לתשובת שרת. השרת עדיין הבודק הסופי -
-// אם הוא מחזיר שגיאה, היא תוצג באותו מקום בדיוק (ראו handleFormError)
+// צביעת תורים לפי טיפול - כרונית ליזואלית בלבד, בלי קטגוריה
+// אמיתית ב-DB. הגיבוב יציב (אותו טיפול תמיד מקבל אותו צבע),
+// כך שהמראה עקבי בכל מקום שבו מוצג תור (יומן, לוח בקרה).
 // ============================================================
 
-function validateNameLocal(value) {
-    const clean = (value || '').trim();
-    if (!clean) return 'השם לא יכול להיות ריק';
-    if (clean.length < 2) return 'השם קצר מדי - נדרשים לפחות 2 תווים';
-    if (clean.length > 50) return 'השם ארוך מדי - עד 50 תווים';
-    if (/\d/.test(clean)) return 'השם לא יכול להכיל ספרות';
-    return null;
-}
-
-function validatePhoneLocal(value) {
-    const clean = (value || '').trim();
-    if (!clean) return 'מספר הטלפון לא יכול להיות ריק';
-    if (!/^0\d{1,2}-?\d{7}$/.test(clean)) {
-        return 'מספר טלפון לא תקין - נדרש פורמט כמו 0501234567';
-    }
-    return null;
-}
-
-function validateEmailLocal(value) {
-    const clean = (value || '').trim();
-    if (!clean) return null; // שדה רשות - ריק תקין
-
-    if (!clean.includes('@')) return 'כתובת אימייל לא תקינה - חסר סימן @';
-
-    const domainPart = clean.split('@').pop();
-    if (!domainPart.includes('.')) return 'כתובת אימייל לא תקינה - חסרה סיומת (למשל .com)';
-
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(clean)) return 'כתובת אימייל לא תקינה';
-
-    return null;
-}
-
-function validatePositiveNumberLocal(value, fieldLabel) {
-    if (value === '' || value === null || value === undefined) {
-        return `${fieldLabel} לא יכול להיות ריק`;
-    }
-    const number = Number(value);
-    if (Number.isNaN(number)) return `${fieldLabel} חייב להיות מספר`;
-    if (number <= 0) return `${fieldLabel} חייב להיות גדול מאפס`;
-    return null;
-}
-
-// מציג הודעת שגיאה מתחת לשדה נתון (span.form-error מתויג error-<fieldId>)
-// ומסמן את השדה עצמו באדום דרך המחלקה has-error
-function setFieldError(fieldId, message) {
-    const input = document.getElementById(fieldId);
-    const errorEl = document.getElementById('error-' + fieldId);
-    if (input) input.classList.toggle('has-error', Boolean(message));
-    if (errorEl) errorEl.textContent = message || '';
-}
-
-function clearFormErrors(formEl) {
-    qsa('.form-error', formEl).forEach((el) => { el.textContent = ''; });
-    // .treatment-checklist נכלל כאן כי גם הוא מסומן ב-has-error
-    // (בחירת טיפולים היא checkbox-ים, לא input.form-input רגיל)
-    qsa('.form-input, .treatment-checklist', formEl).forEach((el) => el.classList.remove('has-error'));
-}
-
-// ממפה שגיאת API (עם error.field מ-app.py) לשדה הנכון בטופס,
-// לפי מילון ה-mapping הספציפי לאותו טופס. בלי field מתאים - מציגים toast
-function handleFormError(error, fieldMap, fallbackMessage) {
-    if (error.field && fieldMap[error.field]) {
-        setFieldError(fieldMap[error.field], error.message);
-    } else {
-        showToast(error.message || fallbackMessage, 'error');
-    }
-}
-
-// מונע לחיצה כפולה על "שמירה" בזמן שהבקשה ל-API עדיין בדרך -
-// משבית את הכפתור ומחליף את הטקסט שלו, כדי שהמשתמש יראה שמשהו
-// קורה (לא מסך קפוא) ולא ייצור בטעות שני תורים/לקוחות זהים
-function setFormBusy(formId, isBusy, busyLabel) {
-    const button = qs(`button[form="${formId}"]`);
-    if (!button) return;
-
-    if (isBusy) {
-        button.dataset.originalLabel = button.textContent;
-        button.textContent = busyLabel || 'שומר...';
-        button.disabled = true;
-    } else {
-        button.textContent = button.dataset.originalLabel || button.textContent;
-        button.disabled = false;
-    }
-}
-
-// ממלא <select> באפשרויות מתוך מערך פריטים, עם escaping לתווית
-function fillSelectOptions(selectEl, items, valueKey, labelFn, placeholder) {
-    const options = [`<option value="" disabled selected>${escapeHtml(placeholder)}</option>`];
-    items.forEach((item) => {
-        options.push(`<option value="${item[valueKey]}">${escapeHtml(labelFn(item))}</option>`);
-    });
-    selectEl.innerHTML = options.join('');
-}
-
-
-// ============================================================
-// 8. ניווט בין 6 המסכים
-// ============================================================
-
-// מפה בין שם מסך לפונקציית הטעינה שלו - מורצת בכל מעבר למסך
-const SCREEN_LOADERS = {
-    dashboard: loadDashboard,
-    appointments: loadAppointments,
-    clients: loadClients,
-    treatments: loadTreatments,
-    invoices: loadInvoices,
-    leads: loadLeads,
+const TINTS = ["pink", "sage", "blue", "gold"];
+const TINT_COLORS = {
+    pink: { bg: "var(--pink-bg)", dot: "var(--pink-dot)" },
+    sage: { bg: "var(--sage-bg)", dot: "var(--sage-dot)" },
+    blue: { bg: "var(--blue-bg)", dot: "var(--blue-dot)" },
+    gold: { bg: "var(--gold-bg)", dot: "var(--gold-bar)" },
 };
 
-function switchScreen(screenName) {
-    qsa('.screen').forEach((section) => {
-        section.classList.toggle('is-active', section.dataset.screen === screenName);
-    });
-    qsa('.nav-item').forEach((btn) => {
-        btn.classList.toggle('is-active', btn.dataset.target === screenName);
-    });
-
-    const loader = SCREEN_LOADERS[screenName];
-    if (loader) loader();
+function tintFor(key) {
+    const text = String(key || "");
+    let hash = 0;
+    for (let i = 0; i < text.length; i++) hash = (hash * 31 + text.charCodeAt(i)) >>> 0;
+    return TINTS[hash % TINTS.length];
 }
 
-function wireNavigation() {
-    qsa('.nav-item').forEach((btn) => {
-        btn.addEventListener('click', () => switchScreen(btn.dataset.target));
-    });
+function trendBadgeHtml(current, previous) {
+    if (previous === 0 && current === 0) return "";
+    const delta = current - previous;
+    if (delta === 0) return `<span class="badge muted">ללא שינוי</span>`;
+    const up = delta > 0;
+    const cls = up ? "sage" : "pink";
+    const arrow = up ? "↑" : "↓";
+    return `<span class="badge ${cls}">${arrow} ${Math.abs(delta)}</span>`;
 }
 
+let modalCloseHandler = null;
+
+function openModal(titleHtml, bodyHtml, { onMount } = {}) {
+    closeModal();
+    const overlay = document.createElement("div");
+    overlay.className = "overlay";
+    overlay.id = "modalOverlay";
+    overlay.innerHTML = `<div class="modal"><h2 class="modal-title">${titleHtml}</h2>${bodyHtml}</div>`;
+    overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) closeModal(); });
+    document.body.appendChild(overlay);
+    modalCloseHandler = () => overlay.remove();
+    if (onMount) onMount(overlay);
+    return overlay;
+}
+
+function closeModal() {
+    if (modalCloseHandler) { modalCloseHandler(); modalCloseHandler = null; }
+}
+
+function confirmAction(message) {
+    return new Promise((resolve) => {
+        openModal("אישור פעולה", `
+            <p style="font-size:14px;color:var(--muted);margin:0;">${escapeHtml(message)}</p>
+            <div class="modal-actions">
+                <button class="btn btn-ghost" id="confirmCancel">ביטול</button>
+                <button class="btn btn-danger" id="confirmOk">אישור</button>
+            </div>
+        `, {
+            onMount: (overlay) => {
+                overlay.querySelector("#confirmCancel").onclick = () => { closeModal(); resolve(false); };
+                overlay.querySelector("#confirmOk").onclick = () => { closeModal(); resolve(true); };
+            },
+        });
+    });
+}
 
 // ============================================================
-// 9. לוגיקת המסכים
+// אתחול: בדיקת התחברות, טעינת נתוני בסיס, הפעלת ניתוב
 // ============================================================
 
-// ---------------------------------------------------------------
-// 9.1 דשבורד
-// ---------------------------------------------------------------
-
-async function loadDashboard() {
-    setTableLoading('today-appointments');
-
-    try {
-        const data = await apiRequest('GET', '/api/dashboard');
-
-        qs('[data-field="today-appointments-count"]').textContent = data.today_appointments.length;
-        qs('[data-field="clients-count"]').textContent = data.clients_count;
-        qs('[data-field="month-revenue"]').textContent = formatCurrency(data.month_revenue);
-        qs('[data-field="open-leads-count"]').textContent = data.open_leads;
-
-        const tbody = getTableElements('today-appointments').tbody;
-        tbody.innerHTML = data.today_appointments.map((appt) => `
-            <tr>
-                <td>${escapeHtml(appt.appointment_time)}</td>
-                <td>${escapeHtml(appt.client_name)}</td>
-                <td>${escapeHtml(appt.treatment_name)}</td>
-                <td>${renderStatusBadge(appt.status)}</td>
-            </tr>
-        `).join('');
-
-        setTableResult('today-appointments', data.today_appointments.length > 0);
-    } catch (error) {
-        showToast(error.message || 'שגיאה בטעינת הדשבורד', 'error');
-        setTableResult('today-appointments', false);
-    }
-}
-
-
-// ---------------------------------------------------------------
-// 9.2 תורים
-// ---------------------------------------------------------------
-
-const APPOINTMENT_FIELD_MAP = {
-    client_id: 'appt-client',
-    treatment_id: 'appt-treatment',
-    appointment_date: 'appt-date',
-    appointment_time: 'appt-time',
-    status: 'appt-status',
-};
-
-async function loadAppointments() {
-    setTableLoading('appointments');
-
-    try {
-        const rows = await apiRequest('GET', '/api/appointments');
-        const tbody = getTableElements('appointments').tbody;
-
-        tbody.innerHTML = rows.map((appt) => `
-            <tr>
-                <td>#${appt.appointment_id}</td>
-                <td>${escapeHtml(appt.client_name)}</td>
-                <td>${escapeHtml(appt.treatment_names.join(', '))}</td>
-                <td>${formatCurrency(appt.total_price)}</td>
-                <td>${appt.total_duration_minutes} דק'</td>
-                <td>${escapeHtml(appt.appointment_date)}</td>
-                <td>${escapeHtml(appt.appointment_time)}</td>
-                <td>${renderStatusBadge(appt.status)}</td>
-                <td class="table-actions">
-                    <button type="button" class="btn-icon" data-action="edit-appointment"
-                            data-id="${appt.appointment_id}" title="עריכה">✎</button>
-                    <button type="button" class="btn-icon btn-icon-danger" data-action="delete-appointment"
-                            data-id="${appt.appointment_id}" title="מחיקה">🗑</button>
-                </td>
-            </tr>
-        `).join('');
-
-        setTableResult('appointments', rows.length > 0);
-    } catch (error) {
-        showToast(error.message || 'שגיאה בטעינת תורים', 'error');
-        setTableResult('appointments', false);
-    }
-}
-
-// רשימת הטיפולים הזמינה לבחירה בטופס - נטענת פעם אחת בכל פתיחת
-// מודל, ומשמשת גם לרינדור ה-checkbox-ים וגם לחישוב הסה"כ בזמן אמת
-let appointmentModalTreatments = [];
-
-// בונה checkbox אחד לכל טיפול בקטלוג, עם מחיר/משך לתצוגה
-function renderTreatmentChecklist(selectedIds) {
-    const container = qs('#appt-treatment');
-    const selectedSet = new Set((selectedIds || []).map(Number));
-
-    if (appointmentModalTreatments.length === 0) {
-        container.innerHTML = '<p class="treatment-checklist-empty">הקטלוג ריק - יש להוסיף טיפולים במסך "טיפולים" קודם</p>';
+async function boot() {
+    if (!getAccessToken()) {
+        window.location.href = "/login";
         return;
     }
 
-    container.innerHTML = appointmentModalTreatments.map((t) => `
-        <label class="treatment-checklist-item">
-            <input type="checkbox" name="treatment_ids" value="${t.treatment_id}"
-                   data-price="${t.price}" data-duration="${t.duration_minutes}"
-                   ${selectedSet.has(t.treatment_id) ? 'checked' : ''}>
-            <span>${escapeHtml(t.treatment_name)}</span>
-            <span class="item-price">${formatCurrency(t.price)} · ${t.duration_minutes} דק'</span>
-        </label>
-    `).join('');
-}
-
-// קורא את כל ה-checkbox-ים המסומנים כרגע בטופס התור
-function getSelectedTreatmentIds() {
-    return qsa('#appt-treatment input[type="checkbox"]:checked')
-        .map((input) => Number(input.value));
-}
-
-// מחשב ומציג סה"כ מחיר ומשך לפי הטיפולים המסומנים - זהו הלב של
-// "טיפול מרוכב": העלות והזמן הכוללים מחושבים מיד, לפני השמירה
-function updateComboTotals() {
-    const checked = qsa('#appt-treatment input[type="checkbox"]:checked');
-    const totalsEl = qs('#appt-combo-totals');
-
-    if (checked.length === 0) {
-        totalsEl.hidden = true;
-        return;
+    try {
+        const me = await apiJson("/api/auth/me");
+        state.user = me.user;
+    } catch (e) {
+        return; // apiFetch כבר הפנה ל-/login
     }
 
-    let totalPrice = 0;
-    let totalDuration = 0;
-    checked.forEach((input) => {
-        totalPrice += Number(input.dataset.price);
-        totalDuration += Number(input.dataset.duration);
-    });
+    renderShell();
+    await loadReferenceData();
 
-    const countLabel = checked.length === 1 ? 'טיפול אחד נבחר' : `${checked.length} טיפולים נבחרו`;
-    totalsEl.textContent = `${countLabel} · סה"כ: ${formatCurrency(totalPrice)} · ${totalDuration} דקות`;
-    totalsEl.hidden = false;
+    window.addEventListener("hashchange", handleRoute);
+    handleRoute();
 }
 
-// פותח את המודל במצב "הוספה" (בלי appointmentId) או "עריכה" (עם מזהה)
-async function openAppointmentModal(mode, appointmentId) {
-    const form = qs('#form-appointment');
-    form.reset();
-    clearFormErrors(form);
-    qs('#appt-id').value = '';
-    qs('#appt-conflict-alert').hidden = true;
-    qs('#appt-available-slots').hidden = true;
-    qs('#appt-combo-totals').hidden = true;
-    qs('#appt-status-group').hidden = true;
-
-    let selectedTreatmentIds = [];
-
-    // תמיד טוענים לקוחות וטיפולים עדכניים למילוי הטופס
+async function loadReferenceData() {
     try {
-        const [clients, treatments] = await Promise.all([
-            apiRequest('GET', '/api/clients'),
-            apiRequest('GET', '/api/treatments'),
+        const [treatments, rooms, machines, staffList] = await Promise.all([
+            apiJson("/api/treatments"),
+            apiJson("/api/rooms"),
+            apiJson("/api/machines"),
+            apiJson("/api/users").then((r) => r.users).catch(() => []),
         ]);
-        fillSelectOptions(qs('#appt-client'), clients, 'client_id',
-            (c) => `${c.full_name} - ${c.phone}`, 'בחר לקוח...');
-        appointmentModalTreatments = treatments;
-    } catch (error) {
-        showToast('שגיאה בטעינת רשימת לקוחות/טיפולים', 'error');
+        state.treatments = treatments;
+        state.rooms = rooms;
+        state.machines = machines;
+        state.staff = staffList;
+    } catch (e) {
+        // נתוני עזר בלבד - כשל כאן לא אמור לחסום את שאר הממשק
     }
-
-    if (mode === 'edit') {
-        qs('#modal-appointment-title').textContent = 'עריכת תור';
-        qs('#appt-status-group').hidden = false;
-
-        try {
-            const appt = await apiRequest('GET', `/api/appointments/${appointmentId}`);
-            qs('#appt-id').value = appt.appointment_id;
-            qs('#appt-client').value = appt.client_id;
-            qs('#appt-date').value = appt.appointment_date;
-            qs('#appt-time').value = appt.appointment_time;
-            qs('#appt-status').value = appt.status;
-            qs('#appt-notes').value = appt.notes || '';
-            selectedTreatmentIds = appt.treatment_ids;
-        } catch (error) {
-            showToast(error.message || 'שגיאה בטעינת התור', 'error');
-        }
-    } else {
-        qs('#modal-appointment-title').textContent = 'הוספת תור חדש';
-    }
-
-    renderTreatmentChecklist(selectedTreatmentIds);
-    updateComboTotals();
-
-    openModal('modal-appointment');
 }
 
-// מציג את השעות הפנויות ליום/טיפולים שנבחרו - רק במצב הוספה.
-// במצב עריכה מדלגים: available-slots לא יודע להתעלם מהתור שאנחנו
-// עצמו עורכים, אז השעה הנוכחית תוצג שגויה כ"תפוסה".
-// בדיקת ההתנגשות האמיתית עדיין קורית בזמן השמירה (check-conflict
-// עם exclude_appointment_id דרך ה-PUT), כך שהנתונים תמיד נכונים.
-async function updateAvailableSlots() {
-    const hint = qs('#appt-available-slots');
+function hasPermission(permission) {
+    return !!(state.user && state.user.permissions && state.user.permissions.includes(permission));
+}
 
-    if (qs('#appt-id').value) {
-        hint.hidden = true;
-        return;
-    }
+// ============================================================
+// מעטפת האפליקציה: תפריט צד + כותרת עליונה
+// ============================================================
 
-    const date = qs('#appt-date').value;
-    const treatmentIds = getSelectedTreatmentIds();
-    if (!date || treatmentIds.length === 0) {
-        hint.hidden = true;
-        return;
-    }
+const NAV_ITEMS = [
+    { key: "dashboard", label: "לוח בקרה", icon: "dashboard" },
+    { key: "calendar", label: "יומן וזימונים", icon: "calendar" },
+    { key: "clients", label: "לקוחות", icon: "clients" },
+    { key: "leads", label: "צינור לידים", icon: "leads" },
+    { key: "packages", label: "קטלוג וחבילות", icon: "packages" },
+    { key: "resources", label: "מכשירים וחדרים", icon: "resources" },
+    { key: "staff", label: "צוות וזמינות", icon: "staff" },
+    { key: "invoices", label: "חשבוניות", icon: "invoices" },
+    { key: "audit", label: "יומן ביקורת", icon: "audit" },
+];
 
+const SIDEBAR_COLLAPSED_KEY = "clinic_sidebar_collapsed";
+
+function renderShell() {
+    const initials = (state.user.full_name || "").trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("");
+    const collapsed = localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
+
+    document.getElementById("app").innerHTML = `
+        <div class="app-shell">
+            <aside class="sidebar${collapsed ? " collapsed" : ""}" id="sidebar">
+                <div class="brand">
+                    <div class="brand-mark"><span></span></div>
+                    <div>
+                        <div class="brand-name">קליניקת לייזר</div>
+                        <div class="brand-sub">ממשק ניהול</div>
+                    </div>
+                </div>
+                <nav class="nav" id="sideNav"></nav>
+                <div class="sidebar-footer">
+                    <div class="collapse-toggle" id="collapseToggle" title="כיווץ תפריט">${ICONS.collapse(16)}</div>
+                    <div class="sidebar-user">
+                        <div class="avatar">${escapeHtml(initials)}</div>
+                        <div>
+                            <div class="sidebar-user-name">${escapeHtml(state.user.full_name)}</div>
+                            <div class="sidebar-user-role">${escapeHtml(state.user.role_label)}</div>
+                        </div>
+                        <div class="sidebar-logout" id="logoutBtn">התנתקות</div>
+                    </div>
+                </div>
+            </aside>
+            <main class="main">
+                <header class="topbar">
+                    <div class="flex-1">
+                        <div class="crumb" id="crumb"></div>
+                        <h1 class="page-title" id="pageTitle"></h1>
+                    </div>
+                    <div class="flex items-center gap-8" id="topbarActions"></div>
+                </header>
+                <div class="page-body" id="pageBody"></div>
+            </main>
+        </div>
+        <div class="toast-stack" id="toastStack"></div>
+    `;
+
+    document.getElementById("sideNav").innerHTML = NAV_ITEMS.map((item) => (
+        `<div class="nav-item" data-route="${item.key}" title="${escapeHtml(item.label)}">
+            <span class="nav-item-icon">${ICONS[item.icon] ? ICONS[item.icon](18) : ""}</span>
+            <span class="nav-item-label">${escapeHtml(item.label)}</span>
+        </div>`
+    )).join("");
+
+    document.querySelectorAll(".nav-item").forEach((el) => {
+        el.addEventListener("click", () => { window.location.hash = "#" + el.dataset.route; });
+    });
+
+    document.getElementById("collapseToggle").addEventListener("click", () => {
+        const sidebar = document.getElementById("sidebar");
+        const isCollapsed = sidebar.classList.toggle("collapsed");
+        localStorage.setItem(SIDEBAR_COLLAPSED_KEY, isCollapsed ? "1" : "0");
+    });
+
+    document.getElementById("logoutBtn").addEventListener("click", async () => {
+        try { await apiJson("/api/auth/logout", { method: "POST" }); } catch (e) { /* ignore */ }
+        clearTokens();
+        window.location.href = "/login";
+    });
+}
+
+function setActiveNav(routeKey) {
+    document.querySelectorAll(".nav-item").forEach((el) => {
+        el.classList.toggle("active", el.dataset.route === routeKey);
+    });
+}
+
+function setPageHeader(crumb, title, actionsHtml) {
+    document.getElementById("crumb").textContent = crumb;
+    document.getElementById("pageTitle").textContent = title;
+    document.getElementById("topbarActions").innerHTML = actionsHtml || "";
+}
+
+// ============================================================
+// ניתוב
+// ============================================================
+
+const ROUTES = {
+    dashboard: renderDashboard,
+    calendar: renderCalendar,
+    clients: renderClientsList,
+    leads: renderLeads,
+    packages: renderPackages,
+    resources: renderResources,
+    staff: renderStaff,
+    invoices: renderInvoices,
+    audit: renderAudit,
+};
+
+function handleRoute() {
+    const hash = (window.location.hash || "#dashboard").slice(1);
+    const [routeKey, param] = hash.split("/");
+    const handler = ROUTES[routeKey] || renderDashboard;
+    setActiveNav(routeKey);
+    document.getElementById("pageBody").innerHTML = `<div class="loading-row">טוען...</div>`;
+    handler(param);
+}
+
+// ============================================================
+// לוח בקרה
+// ============================================================
+
+async function renderDashboard() {
+    setPageHeader("לוח בקרה", `שלום, ${state.user.full_name.split(" ")[0]}`, "");
+    const body = document.getElementById("pageBody");
+
+    let data;
     try {
-        const params = new URLSearchParams({ date, treatment_ids: treatmentIds.join(',') });
-        const data = await apiRequest('GET', `/api/appointments/available-slots?${params}`);
-        renderAvailableSlots(data.available_slots);
-    } catch (error) {
-        hint.hidden = true;
+        data = await apiJson("/api/dashboard");
+    } catch (e) {
+        body.innerHTML = `<div class="loading-row">שגיאה בטעינת הנתונים</div>`;
+        return;
     }
-}
 
-function renderAvailableSlots(slots) {
-    const hint = qs('#appt-available-slots');
+    const revenueTrend = data.revenue_trend || { this_month: data.month_revenue, previous_month: 0 };
+    const leadsTrend = data.leads_trend || { this_month: data.open_leads, previous_month: 0, by_source: {} };
+    const apptTrend = data.appointments_trend || { today_count: data.today_appointments.length, same_weekday_last_week_count: 0 };
+    const sourceLabels = { facebook: "פייסבוק", instagram: "אינסטגרם", google: "גוגל", referral: "הפניות", walk_in: "מהרחוב", "אחר": "אחר" };
+    const sourceSummary = Object.entries(leadsTrend.by_source)
+        .map(([src, count]) => `${count} מ${sourceLabels[src] || src}`)
+        .join(", ");
 
-    if (slots.length === 0) {
-        hint.innerHTML = '<span>אין שעות פנויות בתאריך זה</span>';
+    body.innerHTML = `
+        <div class="stack">
+            <div class="grid-3">
+                <div class="card stat-card">
+                    ${sparklineSvg([apptTrend.same_weekday_last_week_count, apptTrend.today_count])}
+                    <div class="stat-label">תורי היום</div>
+                    <div class="flex items-center gap-8 mt-8">
+                        <div class="stat-value num">${apptTrend.today_count}</div>
+                        ${trendBadgeHtml(apptTrend.today_count, apptTrend.same_weekday_last_week_count)}
+                    </div>
+                    <div class="stat-sub">לעומת ${apptTrend.same_weekday_last_week_count} באותו יום שעבר</div>
+                </div>
+                <div class="card stat-card">
+                    ${sparklineSvg([leadsTrend.previous_month, leadsTrend.this_month])}
+                    <div class="stat-label">לידים חדשים החודש</div>
+                    <div class="flex items-center gap-8 mt-8">
+                        <div class="stat-value num">${leadsTrend.this_month}</div>
+                        ${trendBadgeHtml(leadsTrend.this_month, leadsTrend.previous_month)}
+                    </div>
+                    <div class="stat-sub">${sourceSummary || "אין עדיין לידים החודש"}</div>
+                </div>
+                <div class="card stat-card">
+                    ${sparklineSvg([revenueTrend.previous_month, revenueTrend.this_month])}
+                    <div class="stat-label">הכנסות החודש</div>
+                    <div class="flex items-center gap-8 mt-8">
+                        <div class="stat-value num">₪ ${Number(revenueTrend.this_month || 0).toLocaleString("he-IL")}</div>
+                        ${trendBadgeHtml(revenueTrend.this_month, revenueTrend.previous_month)}
+                    </div>
+                    <div class="stat-sub">מול ₪ ${Number(revenueTrend.previous_month || 0).toLocaleString("he-IL")} בחודש שעבר</div>
+                </div>
+            </div>
+            <div class="grid-2" style="grid-template-columns: minmax(0,1.7fr) minmax(0,1fr);">
+                <div class="card">
+                    <h2 class="card-title">ציר היום</h2>
+                    <div id="todayList"></div>
+                </div>
+                <div class="card">
+                    <div class="flex items-center" style="margin-bottom:16px;">
+                        <h2 class="card-title" style="margin:0;">דורש מעקב</h2>
+                        <span class="text-sm text-muted" style="margin-inline-start:auto;">${data.needs_follow_up.length} מתוך ${data.open_leads}</span>
+                    </div>
+                    <div id="followUpList"></div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    const list = document.getElementById("todayList");
+    if (!data.today_appointments.length) {
+        list.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-state-icon">${ICONS.empty(88)}</div>
+                <div class="empty-state-title">היומן פנוי היום</div>
+                <div class="text-sm">אפשר להתחיל את היום עם תור ראשון</div>
+                <button class="btn btn-primary btn-sm" id="emptyStateNewAppt">${ICONS.plus(13)} תור חדש</button>
+            </div>`;
+        document.getElementById("emptyStateNewAppt").addEventListener("click", () => openAppointmentModal());
     } else {
-        const shown = slots.slice(0, 16);
-        const chips = shown.map((time) => (
-            `<button type="button" class="slot-chip" data-action="pick-slot" data-time="${time}">${time}</button>`
-        )).join('');
-        const more = slots.length > shown.length ? ` ועוד ${slots.length - shown.length}...` : '';
-        hint.innerHTML = `<span>שעות פנויות:</span> ${chips}${more}`;
+        list.innerHTML = data.today_appointments.map((a) => {
+            const tint = tintFor(a.treatment_name);
+            const colors = TINT_COLORS[tint];
+            return `
+                <div class="flex items-center gap-12" style="padding:10px 6px;border-top:1px solid var(--border-soft);">
+                    <div class="num" style="width:52px;font-weight:600;">${escapeHtml(a.appointment_time)}</div>
+                    <div class="flex items-center gap-12" style="flex:1;min-width:0;padding:11px 14px;border-radius:14px;background:${colors.bg};">
+                        <div style="width:3px;align-self:stretch;border-radius:3px;background:${colors.dot};"></div>
+                        <div class="flex-1">
+                            <div style="font-weight:600;">${escapeHtml(a.client_name)}</div>
+                            <div class="text-sm text-muted">${escapeHtml(a.treatment_name || "")}</div>
+                        </div>
+                        <span class="text-sm text-muted">${statusLabel(a.status)}</span>
+                    </div>
+                </div>
+            `;
+        }).join("");
     }
 
-    hint.hidden = false;
+    const followUp = document.getElementById("followUpList");
+    if (!data.needs_follow_up.length) {
+        followUp.innerHTML = `<div class="text-sm text-muted">אין לידים שממתינים למעקב</div>`;
+    } else {
+        followUp.innerHTML = data.needs_follow_up.map((lead) => {
+            const initials = (lead.full_name || "").trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("");
+            const tint = tintFor(lead.full_name);
+            const colors = TINT_COLORS[tint];
+            return `
+                <div class="flex items-center gap-12 clickable" data-open-lead="${lead.lead_id}" style="padding:10px 6px;border-radius:12px;">
+                    <div class="avatar" style="background:${colors.bg};color:${colors.dot};">${escapeHtml(initials)}</div>
+                    <div class="flex-1">
+                        <div style="font-weight:600;font-size:13.5px;">${escapeHtml(lead.full_name)}</div>
+                        <div class="text-sm text-muted">${escapeHtml(lead.source || "")}</div>
+                    </div>
+                </div>
+            `;
+        }).join("");
+        followUp.querySelectorAll("[data-open-lead]").forEach((el) => {
+            el.addEventListener("click", () => { window.location.hash = "#leads"; });
+        });
+    }
 }
 
-async function handleAppointmentSubmit(event) {
-    event.preventDefault();
-    const form = event.target;
-    clearFormErrors(form);
-    qs('#appt-conflict-alert').hidden = true;
+function sparklineSvg(values) {
+    // קו מגמה עדין ברקע הכרטיס, לפי שני ערכים אמיתיים בלבד (חודש
+    // קודם מול נוכחי, או אותו יום שעבר מול היום) - לא נתונים מומצאים,
+    // ראו DESIGN_NOTES.md על העיקרון של 0 אמיתי במקום דמו
+    const width = 220, height = 44, padding = 6;
+    const safeValues = values.map((v) => Number(v) || 0);
+    const maxValue = Math.max(...safeValues, 1);
+    const points = safeValues.map((v, i) => {
+        const x = padding + (i * (width - padding * 2)) / (safeValues.length - 1 || 1);
+        const y = height - padding - (v / maxValue) * (height - padding * 2);
+        return `${x},${y}`;
+    }).join(" ");
+    return `
+        <svg class="stat-sparkline" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">
+            <polyline points="${points}" fill="none" stroke="#DCD8D0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>`;
+}
 
-    const clientId = qs('#appt-client').value;
-    const treatmentIds = getSelectedTreatmentIds();
-    const date = qs('#appt-date').value;
-    const time = qs('#appt-time').value;
-    const notes = qs('#appt-notes').value.trim();
-    const appointmentId = qs('#appt-id').value;
+function statusLabel(status) {
+    return { pending: "ממתין", completed: "הושלם", cancelled: "בוטל" }[status] || status;
+}
+function statusBadgeClass(status) {
+    return { pending: "gold", completed: "sage", cancelled: "muted" }[status] || "muted";
+}
 
-    let hasError = false;
-    if (!clientId) { setFieldError('appt-client', 'יש לבחור לקוח'); hasError = true; }
-    if (treatmentIds.length === 0) { setFieldError('appt-treatment', 'יש לבחור טיפול אחד לפחות'); hasError = true; }
-    if (!date) { setFieldError('appt-date', 'התאריך לא יכול להיות ריק'); hasError = true; }
-    if (!time) { setFieldError('appt-time', 'השעה לא יכולה להיות ריקה'); hasError = true; }
-    if (hasError) return;
+// ============================================================
+// יומן ותורים
+// ============================================================
+
+let calendarDate = todayIso();
+let calendarView = "week"; // "day" | "week" | "month"
+let calendarWeekOffset = 0; // 0 = השבוע הנוכחי
+let calendarMonthOffset = 0; // 0 = החודש הנוכחי
+let calendarAppointmentsById = {}; // נבנה מחדש בכל renderCalendar - tooltip הריחוף קורא ממנו לפי מזהה, לא מ-JSON בתוך attribute
+
+const CAL_WORK_START_HOUR = 9;
+const CAL_WORK_END_HOUR = 19;
+const CAL_PX_PER_HOUR = 56;
+const CAL_HOURS = Array.from(
+    { length: CAL_WORK_END_HOUR - CAL_WORK_START_HOUR },
+    (_, i) => `${String(CAL_WORK_START_HOUR + i).padStart(2, "0")}:00`
+);
+// יום עבודה ישראלי: ראשון עד שישי (6 ימים, בלי שבת) - כמו בעיצוב המקור
+const CAL_DAY_NAMES = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי"];
+
+function weekStartFor(isoDate) {
+    const d = new Date(isoDate + "T00:00:00");
+    d.setDate(d.getDate() - d.getDay()); // getDay(): 0=ראשון, כבר מתאים
+    return d;
+}
+
+function minutesFromWorkStart(hhmm) {
+    const [h, m] = hhmm.split(":").map(Number);
+    return (h - CAL_WORK_START_HOUR) * 60 + m;
+}
+
+const CAL_VIEWS = [
+    { key: "day", label: "יום" },
+    { key: "week", label: "שבוע" },
+    { key: "month", label: "חודש" },
+];
+
+async function renderCalendar() {
+    setPageHeader("יומן הקליניקה", "ניהול זימונים", `
+        <button class="btn btn-primary" id="newApptBtn">${ICONS.plus(13)} תור חדש</button>
+    `);
+
+    document.getElementById("pageBody").innerHTML = `
+        <div class="card">
+            <div class="cal-toolbar">
+                <div class="cal-nav-btn" id="calPrev">${ICONS.chevronBack(15)}</div>
+                <div class="cal-nav-btn" id="calNext" style="transform:scaleX(-1);">${ICONS.chevronBack(15)}</div>
+                <span class="cal-range-label" id="calLabel"></span>
+                <div class="cal-segmented" id="calSegmented">
+                    ${CAL_VIEWS.map((v) => `<div class="cal-segment" data-view="${v.key}">${v.label}</div>`).join("")}
+                </div>
+            </div>
+            <div id="calendarBody" style="overflow-x:auto;position:relative;"></div>
+        </div>
+    `;
+
+    document.getElementById("calPrev").addEventListener("click", () => shiftCalendar(-1));
+    document.getElementById("calNext").addEventListener("click", () => shiftCalendar(1));
+    document.getElementById("newApptBtn").addEventListener("click", () => openAppointmentModal());
+
+    document.querySelectorAll("#calSegmented .cal-segment").forEach((el) => {
+        el.classList.toggle("active", el.dataset.view === calendarView);
+        el.addEventListener("click", () => { calendarView = el.dataset.view; renderCalendar(); });
+    });
+
+    let appointments;
+    try {
+        appointments = await apiJson("/api/appointments");
+    } catch (e) {
+        document.getElementById("calendarBody").innerHTML = `<div class="loading-row">שגיאה בטעינה</div>`;
+        return;
+    }
+
+    calendarAppointmentsById = {};
+
+    if (calendarView === "week") {
+        renderWeekGrid(appointments);
+    } else if (calendarView === "month") {
+        renderMonthGrid(appointments);
+    } else {
+        renderDayGrid(appointments);
+    }
+}
+
+function shiftCalendar(direction) {
+    if (calendarView === "week") {
+        calendarWeekOffset += direction;
+    } else if (calendarView === "month") {
+        calendarMonthOffset += direction;
+    } else {
+        const d = new Date(calendarDate + "T00:00:00");
+        d.setDate(d.getDate() + direction);
+        calendarDate = d.toISOString().slice(0, 10);
+    }
+    renderCalendar();
+}
+
+function renderDayGrid(appointments) {
+    document.getElementById("calLabel").textContent = formatDateHe(calendarDate);
+    renderTimeGrid([{ date: calendarDate, name: null }], appointments, true);
+}
+
+function renderWeekGrid(appointments) {
+    const start = weekStartFor(todayIso());
+    start.setDate(start.getDate() + calendarWeekOffset * 7);
+
+    const days = CAL_DAY_NAMES.map((name, i) => {
+        const d = new Date(start);
+        d.setDate(d.getDate() + i);
+        return { date: d.toISOString().slice(0, 10), name };
+    });
+
+    const label = `${formatDateHe(days[0].date)} – ${formatDateHe(days[days.length - 1].date)}`;
+    document.getElementById("calLabel").textContent = label;
+    renderTimeGrid(days, appointments, false);
+}
+
+/** מצייר גריד שעות משותף ליום/שבוע - יום הוא גריד עם עמודה אחת. */
+function renderTimeGrid(days, appointments, isSingleDay) {
+    const container = document.getElementById("calendarBody");
+    const gridCols = `54px repeat(${days.length}, minmax(${isSingleDay ? "280px" : "150px"}, 1fr))`;
+
+    const headerHtml = days.map((day) => {
+        const isToday = day.date === todayIso();
+        return `
+            <div style="padding:10px 0 12px;text-align:center;border-inline-start:1px solid var(--border-soft);">
+                ${day.name ? `<div class="text-sm text-muted">${day.name}</div>` : ""}
+                <div class="num" style="margin-top:2px;font-size:15px;font-weight:500;color:${isToday ? "var(--gold-ink)" : "var(--ink)"};">
+                    ${day.date.slice(8, 10)}.${day.date.slice(5, 7)}
+                </div>
+            </div>
+        `;
+    }).join("");
+
+    const hourLabelsHtml = CAL_HOURS.map((h) => (
+        `<div class="num text-sm text-muted" style="height:${CAL_PX_PER_HOUR}px;padding-top:1px;">${h}</div>`
+    )).join("");
+
+    const dayColumnsHtml = days.map((day) => {
+        const dayAppointments = appointments.filter((a) => a.appointment_date === day.date);
+        const gridLinesHtml = CAL_HOURS.map(() => (
+            `<div style="height:${CAL_PX_PER_HOUR}px;border-top:1px solid var(--border-soft);"></div>`
+        )).join("");
+
+        const blocksHtml = dayAppointments.map((a) => {
+            const tint = tintFor(a.treatment_name);
+            const colors = TINT_COLORS[tint];
+            const top = (minutesFromWorkStart(a.appointment_time) / 60) * CAL_PX_PER_HOUR;
+            const height = Math.max(30, ((a.total_duration_minutes || 30) / 60) * CAL_PX_PER_HOUR - 4);
+            if (top < 0 || top > (CAL_WORK_END_HOUR - CAL_WORK_START_HOUR) * CAL_PX_PER_HOUR) return "";
+            calendarAppointmentsById[a.appointment_id] = a;
+            return `
+                <div class="clickable cal-appt-block" data-appt-id="${a.appointment_id}"
+                     style="position:absolute;inset-inline:3px;top:${top}px;height:${height}px;border-radius:10px;padding:6px 8px;
+                            background:${colors.bg};overflow:hidden;cursor:pointer;">
+                    <div style="display:flex;gap:6px;height:100%;">
+                        <div style="width:2.5px;border-radius:3px;background:${colors.dot};flex:0 0 auto;"></div>
+                        <div style="min-width:0;">
+                            <div style="font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(a.client_name)}</div>
+                            <div style="font-size:11px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(a.treatment_name || "")} · ${escapeHtml(a.appointment_time)}</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join("");
+
+        return `
+            <div style="position:relative;border-inline-start:1px solid var(--border-soft);">
+                ${gridLinesHtml}
+                ${blocksHtml}
+            </div>
+        `;
+    }).join("");
+
+    container.innerHTML = `
+        <div style="display:grid;grid-template-columns:${gridCols};border-top:1px solid var(--border);min-width:${days.length > 1 ? "700px" : "auto"};">
+            <div></div>
+            ${headerHtml}
+        </div>
+        <div style="display:grid;grid-template-columns:${gridCols};min-width:${days.length > 1 ? "700px" : "auto"};">
+            <div style="display:flex;flex-direction:column;">${hourLabelsHtml}</div>
+            ${dayColumnsHtml}
+        </div>
+    `;
+
+    container.querySelectorAll("[data-appt-id]").forEach((el) => {
+        el.addEventListener("click", () => openAppointmentModal(el.dataset.apptId));
+        attachApptTooltip(el);
+    });
+
+    if (!appointments.some((a) => days.some((d) => d.date === a.appointment_date))) {
+        container.insertAdjacentHTML("beforeend", `
+            <div class="empty-state"><div class="empty-state-title">אין תורים בטווח הזה</div>
+            <div class="text-sm">אפשר להוסיף תור חדש עם הכפתור למעלה</div></div>
+        `);
+    }
+}
+
+/**
+ * Part 19 בעיצוב: ריחוף מעל בלוק תור פותח כרטיס צף (246px) עם פרטי
+ * התור, ממוקם לפי ה-bounding rect של הבלוק עצמו. נסגר ב-mouseleave.
+ */
+function attachApptTooltip(el) {
+    let tooltipEl = null;
+
+    el.addEventListener("mouseenter", () => {
+        const appointment = calendarAppointmentsById[el.dataset.apptId];
+        if (!appointment) return;
+
+        const rect = el.getBoundingClientRect();
+        tooltipEl = document.createElement("div");
+        tooltipEl.className = "cal-tooltip";
+        tooltipEl.innerHTML = `
+            <div class="cal-tooltip-title">${escapeHtml(appointment.client_name)}</div>
+            <div class="cal-tooltip-row">${escapeHtml(appointment.treatment_name || "")}</div>
+            <div class="cal-tooltip-row num ltr">${escapeHtml(appointment.appointment_time)} · ${escapeHtml(formatDateHe(appointment.appointment_date))}</div>
+            ${appointment.package_progress ? `<div class="cal-tooltip-row">חבילה: ${escapeHtml(appointment.package_progress)}</div>` : ""}
+            <div class="cal-tooltip-row">${ICONS.contact(14)} יצירת קשר</div>
+        `;
+        document.body.appendChild(tooltipEl);
+
+        const tooltipWidth = 246;
+        let left = rect.left - tooltipWidth - 10;
+        if (left < 8) left = rect.right + 10;
+        let top = Math.min(rect.top, window.innerHeight - tooltipEl.offsetHeight - 12);
+        tooltipEl.style.left = `${left}px`;
+        tooltipEl.style.top = `${Math.max(8, top)}px`;
+    });
+
+    el.addEventListener("mouseleave", () => {
+        if (tooltipEl) { tooltipEl.remove(); tooltipEl = null; }
+    });
+}
+
+// ---------- תצוגת חודש ----------
+
+function renderMonthGrid(appointments) {
+    const base = new Date(todayIso() + "T00:00:00");
+    base.setDate(1);
+    base.setMonth(base.getMonth() + calendarMonthOffset);
+
+    document.getElementById("calLabel").textContent = base.toLocaleDateString("he-IL", { month: "long", year: "numeric" });
+
+    // ראשון עד שבת - 42 תאים (6 שבועות), מתחיל מהראשון שלפני/בתחילת החודש
+    const firstOfMonth = new Date(base);
+    const gridStart = new Date(firstOfMonth);
+    gridStart.setDate(gridStart.getDate() - gridStart.getDay());
+
+    const monthIndex = firstOfMonth.getMonth();
+    const today = todayIso();
+
+    const appointmentsByDate = {};
+    appointments.forEach((a) => {
+        (appointmentsByDate[a.appointment_date] = appointmentsByDate[a.appointment_date] || []).push(a);
+    });
+
+    const headHtml = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"]
+        .map((name) => `<div class="cal-month-head">${name}</div>`).join("");
+
+    const cellsHtml = Array.from({ length: 42 }, (_, i) => {
+        const d = new Date(gridStart);
+        d.setDate(d.getDate() + i);
+        const dateStr = d.toISOString().slice(0, 10);
+        const isOutside = d.getMonth() !== monthIndex;
+        const isToday = dateStr === today;
+        const dayAppointments = appointmentsByDate[dateStr] || [];
+        const dotsHtml = dayAppointments.slice(0, 5).map((a) => {
+            const colors = TINT_COLORS[tintFor(a.treatment_name)];
+            return `<span class="cal-month-dot" style="background:${colors.dot};"></span>`;
+        }).join("");
+
+        return `
+            <div class="cal-month-cell${isOutside ? " outside" : ""}" data-month-date="${dateStr}">
+                <div class="cal-month-date num${isToday ? " today" : ""}">${d.getDate()}</div>
+                <div class="cal-month-dots">${dotsHtml}</div>
+            </div>
+        `;
+    }).join("");
+
+    document.getElementById("calendarBody").innerHTML = `
+        <div class="cal-month-grid">${headHtml}${cellsHtml}</div>
+    `;
+
+    document.querySelectorAll("[data-month-date]").forEach((el) => {
+        el.addEventListener("click", () => {
+            calendarDate = el.dataset.monthDate;
+            calendarView = "day";
+            renderCalendar();
+        });
+    });
+}
+
+function treatmentOptionsHtml(selectedIds) {
+    return state.treatments.map((t) => (
+        `<option value="${t.treatment_id}" ${selectedIds && selectedIds.includes(t.treatment_id) ? "selected" : ""}>${escapeHtml(t.treatment_name)} (${t.duration_minutes} דק')</option>`
+    )).join("");
+}
+
+async function openAppointmentModal(appointmentId) {
+    let existing = null;
+    let clients = [];
+    try {
+        clients = await apiJson("/api/clients");
+        if (appointmentId) existing = await apiJson(`/api/appointments/${appointmentId}`);
+    } catch (e) {
+        toast("שגיאה בטעינת נתונים", "error");
+        return;
+    }
+
+    const clientOptions = clients.map((c) => (
+        `<option value="${c.client_id}" ${existing && existing.client_id === c.client_id ? "selected" : ""}>${escapeHtml(c.full_name)}</option>`
+    )).join("");
+
+    const staffOptions = state.staff.map((u) => (
+        `<option value="${u.user_id}" ${existing && existing.staff_user_id === u.user_id ? "selected" : ""}>${escapeHtml(u.full_name)}</option>`
+    )).join("");
+    const roomOptions = state.rooms.map((r) => (
+        `<option value="${r.room_id}" ${existing && existing.room_id === r.room_id ? "selected" : ""}>${escapeHtml(r.name)}</option>`
+    )).join("");
+
+    openModal(existing ? "עריכת תור" : "תור חדש", `
+        <div class="field"><label>לקוחה</label><select id="apptClient">${clientOptions}</select></div>
+        <div class="field"><label>טיפולים (אפשר לבחור כמה)</label>
+            <select id="apptTreatments" multiple size="4">${treatmentOptionsHtml(existing ? existing.treatment_ids : [])}</select>
+        </div>
+        <div class="field-row">
+            <div class="field"><label>תאריך</label><input type="date" id="apptDate" value="${existing ? existing.appointment_date : calendarDate}"></div>
+            <div class="field"><label>שעה</label><input type="time" id="apptTime" value="${existing ? existing.appointment_time : ""}"></div>
+        </div>
+        <div class="field-row">
+            <div class="field"><label>חדר (רשות)</label><select id="apptRoom"><option value="">ללא</option>${roomOptions}</select></div>
+            <div class="field"><label>עובדת (רשות)</label><select id="apptStaff"><option value="">ללא</option>${staffOptions}</select></div>
+        </div>
+        ${existing ? `
+        <div class="field"><label>סטטוס</label>
+            <select id="apptStatus">
+                <option value="pending" ${existing.status === "pending" ? "selected" : ""}>ממתין</option>
+                <option value="completed" ${existing.status === "completed" ? "selected" : ""}>הושלם</option>
+                <option value="cancelled" ${existing.status === "cancelled" ? "selected" : ""}>בוטל</option>
+            </select>
+        </div>` : ""}
+        <div class="field"><label>הערות</label><textarea id="apptNotes" rows="2">${existing ? escapeHtml(existing.notes || "") : ""}</textarea></div>
+        <div id="apptError" class="field-error"></div>
+        <div class="modal-actions">
+            ${existing && hasPermission("appointment.delete") ? '<button class="btn btn-danger" id="apptDelete" style="margin-inline-end:auto;">מחיקת תור</button>' : ""}
+            <button class="btn btn-ghost" id="apptCancel">ביטול</button>
+            <button class="btn btn-primary" id="apptSave">${existing ? "שמירה" : "קביעת תור"}</button>
+        </div>
+    `, {
+        onMount: (overlay) => {
+            overlay.querySelector("#apptCancel").onclick = closeModal;
+            if (existing && overlay.querySelector("#apptDelete")) {
+                overlay.querySelector("#apptDelete").onclick = async () => {
+                    const ok = await confirmAction("למחוק את התור? פעולה זו סופית.");
+                    if (!ok) return;
+                    try {
+                        await apiJson(`/api/appointments/${appointmentId}`, { method: "DELETE" });
+                        closeModal();
+                        toast("התור נמחק", "success");
+                        loadCalendarList();
+                    } catch (e) { toast(e.message, "error"); }
+                };
+            }
+            overlay.querySelector("#apptSave").onclick = () => saveAppointment(appointmentId);
+        },
+    });
+}
+
+async function saveAppointment(appointmentId) {
+    const treatmentSelect = document.getElementById("apptTreatments");
+    const treatmentIds = Array.from(treatmentSelect.selectedOptions).map((o) => parseInt(o.value, 10));
+    const errorEl = document.getElementById("apptError");
+    errorEl.textContent = "";
+
+    if (!treatmentIds.length) {
+        errorEl.textContent = "יש לבחור טיפול אחד לפחות";
+        return;
+    }
 
     const payload = {
-        client_id: Number(clientId),
+        client_id: parseInt(document.getElementById("apptClient").value, 10),
         treatment_ids: treatmentIds,
-        appointment_date: date,
-        appointment_time: time,
-        notes: notes || null,
+        appointment_date: document.getElementById("apptDate").value,
+        appointment_time: document.getElementById("apptTime").value,
+        notes: document.getElementById("apptNotes").value || null,
+        room_id: document.getElementById("apptRoom").value ? parseInt(document.getElementById("apptRoom").value, 10) : null,
+        staff_user_id: document.getElementById("apptStaff").value ? parseInt(document.getElementById("apptStaff").value, 10) : null,
     };
-    if (appointmentId) {
-        payload.status = qs('#appt-status').value;
-    }
+    const statusField = document.getElementById("apptStatus");
+    if (statusField) payload.status = statusField.value;
 
-    setFormBusy('form-appointment', true);
     try {
         if (appointmentId) {
-            await apiRequest('PUT', `/api/appointments/${appointmentId}`, payload);
-            showToast('התור עודכן בהצלחה', 'success');
+            await apiJson(`/api/appointments/${appointmentId}`, { method: "PUT", body: JSON.stringify(payload) });
+            toast("התור עודכן", "success");
         } else {
-            await apiRequest('POST', '/api/appointments', payload);
-            showToast('התור נקבע בהצלחה', 'success');
+            await apiJson("/api/appointments", { method: "POST", body: JSON.stringify(payload) });
+            toast("התור נקבע", "success");
         }
-        closeModal('modal-appointment');
-        loadAppointments();
-    } catch (error) {
-        if (error.field && APPOINTMENT_FIELD_MAP[error.field]) {
-            setFieldError(APPOINTMENT_FIELD_MAP[error.field], error.message);
-        } else {
-            // בעיקר התנגשות שעות (409 בלי field ספציפי) - מוצג בתיבת ההתראה הייעודית
-            qs('#appt-conflict-alert').textContent = error.message || 'שמירת התור נכשלה';
-            qs('#appt-conflict-alert').hidden = false;
-        }
-    } finally {
-        setFormBusy('form-appointment', false);
+        closeModal();
+        loadCalendarList();
+    } catch (e) {
+        errorEl.textContent = e.message;
     }
 }
 
-function wireAppointmentsScreen() {
-    qs('#btn-add-appointment').addEventListener('click', () => openAppointmentModal('add'));
-    qs('#appt-date').addEventListener('change', updateAvailableSlots);
-    qs('#form-appointment').addEventListener('submit', handleAppointmentSubmit);
+// ============================================================
+// לקוחות
+// ============================================================
 
-    // האזנה יחידה על מיכל ה-checkbox-ים (event delegation) - עובד
-    // גם אחרי ש-renderTreatmentChecklist מחליף את התוכן הפנימי שלו
-    qs('#appt-treatment').addEventListener('change', (event) => {
-        if (event.target.matches('input[type="checkbox"]')) {
-            updateComboTotals();
-            updateAvailableSlots();
-        }
+async function renderClientsList() {
+    setPageHeader("לקוחות", "מרכז לקוחות", `
+        <button class="btn btn-primary" id="newClientBtn">${ICONS.plus(13)} לקוחה חדשה</button>
+    `);
+    document.getElementById("pageBody").innerHTML = `<div class="card" style="padding:6px;"><table id="clientsTable">
+        <thead><tr><th>לקוחה</th><th>טלפון</th><th>חבילה פעילה</th><th>הכנסה</th><th></th></tr></thead>
+        <tbody><tr><td colspan="5" class="loading-row">טוען...</td></tr></tbody>
+    </table></div>`;
+
+    document.getElementById("newClientBtn").addEventListener("click", () => openClientModal());
+
+    let clients;
+    try {
+        clients = await apiJson("/api/clients");
+    } catch (e) {
+        document.querySelector("#clientsTable tbody").innerHTML = `<tr><td colspan="5" class="loading-row">שגיאה בטעינה</td></tr>`;
+        return;
+    }
+
+    const tbody = document.querySelector("#clientsTable tbody");
+    if (!clients.length) {
+        tbody.innerHTML = `<tr><td colspan="5" class="loading-row">אין עדיין לקוחות במערכת</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = clients.map((c) => {
+        const initials = (c.full_name || "").trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("");
+        const tint = tintFor(c.full_name);
+        const colors = TINT_COLORS[tint];
+        const sinceYear = c.created_at ? new Date(c.created_at).getFullYear() : null;
+        const pkg = c.active_package;
+        const progressPct = pkg ? Math.round(((pkg.total_sessions - pkg.sessions_remaining) / pkg.total_sessions) * 100) : 0;
+
+        return `
+        <tr class="clickable" data-client-id="${c.client_id}">
+            <td>
+                <div class="flex items-center gap-12">
+                    <div class="avatar" style="background:${colors.bg};color:${colors.dot};">${escapeHtml(initials)}</div>
+                    <div>
+                        <div style="font-weight:600;">${escapeHtml(c.full_name)}</div>
+                        <div class="text-sm text-muted">${sinceYear ? `לקוחה מ-${sinceYear}` : ""}</div>
+                    </div>
+                </div>
+            </td>
+            <td class="num ltr">${escapeHtml(c.phone)}</td>
+            <td>
+                ${pkg ? `
+                    <div class="text-sm">${escapeHtml(pkg.name)} · ${pkg.sessions_remaining}/${pkg.total_sessions}</div>
+                    <div class="progress-track mt-8" style="width:100px;"><div class="progress-fill" style="width:${progressPct}%;"></div></div>
+                ` : `<span class="text-sm text-muted">ללא חבילה פעילה</span>`}
+            </td>
+            <td class="num" style="font-weight:500;">₪ ${Number(c.total_revenue || 0).toLocaleString("he-IL")}</td>
+            <td><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M14 6l-6 6 6 6" stroke="#C7C3BB" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" transform="scale(-1,1) translate(-24,0)"></path></svg></td>
+        </tr>
+    `;
+    }).join("");
+
+    tbody.querySelectorAll("[data-client-id]").forEach((el) => {
+        el.addEventListener("click", () => { window.location.hash = "#clients/" + el.dataset.clientId; });
     });
 }
 
+function openClientModal(existing) {
+    openModal(existing ? "עריכת לקוחה" : "לקוחה חדשה", `
+        <div class="field"><label>שם מלא</label><input id="clientName" value="${existing ? escapeHtml(existing.full_name) : ""}"></div>
+        <div class="field"><label>טלפון</label><input id="clientPhone" class="ltr" value="${existing ? escapeHtml(existing.phone) : ""}"></div>
+        <div class="field"><label>אימייל (רשות)</label><input id="clientEmail" class="ltr" value="${existing ? escapeHtml(existing.email || "") : ""}"></div>
+        <div class="field"><label>כתובת (רשות)</label><input id="clientAddress" value="${existing ? escapeHtml(existing.address || "") : ""}"></div>
+        <div id="clientError" class="field-error"></div>
+        <div class="modal-actions">
+            <button class="btn btn-ghost" id="clientCancel">ביטול</button>
+            <button class="btn btn-primary" id="clientSave">שמירה</button>
+        </div>
+    `, {
+        onMount: (overlay) => {
+            overlay.querySelector("#clientCancel").onclick = closeModal;
+            overlay.querySelector("#clientSave").onclick = async () => {
+                const payload = {
+                    full_name: document.getElementById("clientName").value,
+                    phone: document.getElementById("clientPhone").value,
+                    email: document.getElementById("clientEmail").value || null,
+                    address: document.getElementById("clientAddress").value || null,
+                };
+                try {
+                    if (existing) {
+                        await apiJson(`/api/clients/${existing.client_id}`, { method: "PUT", body: JSON.stringify(payload) });
+                    } else {
+                        await apiJson("/api/clients", { method: "POST", body: JSON.stringify(payload) });
+                    }
+                    closeModal();
+                    toast("הלקוחה נשמרה", "success");
+                    handleRoute();
+                } catch (e) {
+                    document.getElementById("clientError").textContent = e.message;
+                }
+            };
+        },
+    });
+}
 
-// ---------------------------------------------------------------
-// 9.3 לקוחות
-// ---------------------------------------------------------------
+async function renderClientProfile(clientIdRaw) {
+    const clientId = parseInt(clientIdRaw, 10);
+    setPageHeader("לקוחות", "פרופיל לקוחה", "");
+    const body = document.getElementById("pageBody");
+    body.innerHTML = `<div class="loading-row">טוען...</div>`;
 
-const CLIENT_FIELD_MAP = {
-    full_name: 'client-name',
-    phone: 'client-phone',
-    email: 'client-email',
-};
+    let data;
+    try {
+        data = await apiJson(`/api/clients/${clientId}/history`);
+    } catch (e) {
+        body.innerHTML = `<div class="loading-row">שגיאה בטעינה</div>`;
+        return;
+    }
 
-function renderClientsTable(clients) {
-    const tbody = getTableElements('clients').tbody;
-    tbody.innerHTML = clients.map((client) => `
+    const client = data.client;
+    const initials = (client.full_name || "").trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("");
+
+    let clientPackages = [];
+    let packageCatalog = [];
+    try {
+        [clientPackages, packageCatalog] = await Promise.all([
+            apiJson(`/api/packages/client/${clientId}`),
+            apiJson("/api/packages"),
+        ]);
+    } catch (e) { /* ignore - הכרטיס עדיין יוצג בלי חבילה */ }
+    const packageById = Object.fromEntries(packageCatalog.map((p) => [p.package_id, p]));
+    const activeClientPackage = clientPackages.find((cp) => cp.is_active && cp.sessions_remaining > 0) || null;
+    const activePackage = activeClientPackage && packageById[activeClientPackage.package_id]
+        ? { ...activeClientPackage, package: packageById[activeClientPackage.package_id] }
+        : null;
+
+    const lastVisit = data.appointments
+        .filter((a) => a.status === "completed")
+        .sort((a, b) => (a.appointment_date < b.appointment_date ? 1 : -1))[0];
+    const openInvoicesCount = data.invoices.filter((inv) => !inv.is_cancelled).length;
+
+    body.innerHTML = `
+        <div class="stack">
+            <div class="card">
+                <div class="text-sm text-muted" style="cursor:pointer;margin-bottom:14px;" id="backToList">${ICONS.chevronBack(13)} חזרה לרשימת הלקוחות</div>
+                <div class="flex items-center gap-12">
+                    <div class="avatar lg">${escapeHtml(initials)}</div>
+                    <div class="flex-1">
+                        <div class="flex items-center gap-8">
+                            <h2 style="margin:0;font-size:22px;font-weight:600;">${escapeHtml(client.full_name)}</h2>
+                            ${activePackage ? '<span class="badge gold">לקוחת חבילה</span>' : ""}
+                        </div>
+                        <div class="flex items-center gap-12 text-sm text-muted mt-8">
+                            <span class="num ltr">${escapeHtml(client.phone)}</span>
+                            <span>${escapeHtml(client.email || "")}</span>
+                        </div>
+                    </div>
+                    <button class="btn btn-secondary" id="editClientBtn">עריכת פרטים</button>
+                    <button class="btn btn-primary" id="newApptForClient">קביעת תור</button>
+                </div>
+            </div>
+
+            <div class="grid-2" style="grid-template-columns: minmax(0,1.6fr) minmax(0,1fr);align-items:start;">
+                <div class="card">
+                    <div class="tabs" id="profileTabs">
+                        <div class="tab active" data-tab="details">פרטים</div>
+                        <div class="tab" data-tab="history">היסטוריית טיפולים</div>
+                        <div class="tab" data-tab="docs">מסמכים</div>
+                    </div>
+                    <div id="profileTabBody"></div>
+                </div>
+
+                <div class="stack">
+                    <div class="card">
+                        <h2 class="card-title">חבילה פעילה</h2>
+                        ${activePackage ? `
+                            <div class="flex items-center gap-8">
+                                <span class="stat-value num" style="font-size:26px;">${activePackage.package.total_sessions - activePackage.sessions_remaining}/${activePackage.package.total_sessions}</span>
+                            </div>
+                            <div class="progress-track mt-8"><div class="progress-fill" style="width:${Math.round(((activePackage.package.total_sessions - activePackage.sessions_remaining) / activePackage.package.total_sessions) * 100)}%;"></div></div>
+                            <div class="text-sm text-muted mt-8">${escapeHtml(activePackage.package.name)} · נותרו ${activePackage.sessions_remaining} מפגשים</div>
+                        ` : `<div class="text-sm text-muted">אין חבילה פעילה. אפשר למכור חבילה מעמוד "קטלוג וחבילות".</div>`}
+                    </div>
+                    <div class="card">
+                        <h2 class="card-title">סיכום כספי</h2>
+                        <div class="stack" style="gap:12px;">
+                            <div class="flex items-center"><span class="text-sm text-muted">הכנסה מצטברת</span><span class="num" style="margin-inline-start:auto;font-weight:600;">₪ ${Number(data.total_active_amount || 0).toLocaleString("he-IL")}</span></div>
+                            <div class="flex items-center"><span class="text-sm text-muted">חשבוניות פתוחות</span><span class="num" style="margin-inline-start:auto;font-weight:600;">${openInvoicesCount}</span></div>
+                            <div class="flex items-center"><span class="text-sm text-muted">ביקור אחרון</span><span class="num" style="margin-inline-start:auto;font-weight:600;">${lastVisit ? formatDateHe(lastVisit.appointment_date) : "—"}</span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.getElementById("backToList").addEventListener("click", () => { window.location.hash = "#clients"; });
+    document.getElementById("editClientBtn").addEventListener("click", () => openClientModal(client));
+    document.getElementById("newApptForClient").addEventListener("click", () => openAppointmentModal());
+
+    function renderDetailsTab() {
+        return `
+            <div class="field-row">
+                <div><div class="text-sm text-muted">כתובת</div><div class="mt-8">${escapeHtml(client.address || "—")}</div></div>
+                <div><div class="text-sm text-muted">לקוחה מאז</div><div class="mt-8 num">${client.created_at ? formatDateHe(client.created_at.slice(0, 10)) : "—"}</div></div>
+            </div>
+            <div class="field-row mt-16">
+                <div><div class="text-sm text-muted">חשבוניות</div><div class="mt-8">${data.invoices.length ? `${data.invoices.length} חשבוניות` : "אין חשבוניות"}</div></div>
+                <div>
+                    <div class="text-sm text-muted">הצהרת בריאות</div>
+                    <div class="mt-8">
+                        ${client.has_signed_health_declaration
+                            ? '<span class="badge sage">חתומה</span>'
+                            : `<div class="flex items-center gap-8">
+                                 <span class="badge muted">לא חתומה</span>
+                                 <label class="btn btn-secondary btn-sm" style="cursor:pointer;">
+                                     העלאת מסמך<input type="file" id="healthDeclFile" accept=".pdf,.jpg,.jpeg,.png" style="display:none;">
+                                 </label>
+                               </div>`}
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    function renderHistoryTab() {
+        if (!data.appointments.length) return `<div class="text-sm text-muted">אין עדיין תורים</div>`;
+        return data.appointments.map((a) => `
+            <div class="flex items-center gap-12" style="padding:11px 6px;border-top:1px solid var(--border-soft);">
+                <div class="text-sm text-muted num" style="width:90px;">${formatDateHe(a.appointment_date)}</div>
+                <div class="flex-1">${escapeHtml(a.treatment_name || "")}</div>
+                <span class="badge ${statusBadgeClass(a.status)}">${statusLabel(a.status)}</span>
+            </div>
+        `).join("");
+    }
+
+    function renderDocsTab() {
+        if (!client.has_signed_health_declaration) {
+            return `<div class="text-sm text-muted">אין מסמכים עדיין</div>`;
+        }
+        return `
+            <div class="grid-3">
+                <div class="card" style="box-shadow:none;border:1px solid var(--border);padding:16px;">
+                    ${ICONS.invoices(22)}
+                    <div style="font-weight:600;margin-top:10px;">הצהרת בריאות</div>
+                    <div class="text-sm text-muted mt-8">PDF/תמונה</div>
+                </div>
+            </div>
+        `;
+    }
+
+    const TAB_RENDERERS = { details: renderDetailsTab, history: renderHistoryTab, docs: renderDocsTab };
+
+    function activateTab(tabKey) {
+        document.querySelectorAll("#profileTabs .tab").forEach((el) => el.classList.toggle("active", el.dataset.tab === tabKey));
+        document.getElementById("profileTabBody").innerHTML = TAB_RENDERERS[tabKey]();
+
+        const fileInput = document.getElementById("healthDeclFile");
+        if (fileInput) {
+            fileInput.addEventListener("change", async () => {
+                if (!fileInput.files.length) return;
+                const formData = new FormData();
+                formData.append("file", fileInput.files[0]);
+                try {
+                    await apiFetch(`/api/clients/${clientId}/health-declaration`, { method: "POST", body: formData })
+                        .then((r) => { if (!r.ok) throw new Error("upload failed"); });
+                    toast("המסמך הועלה", "success");
+                    renderClientProfile(clientIdRaw);
+                } catch (e) {
+                    toast("העלאת המסמך נכשלה", "error");
+                }
+            });
+        }
+    }
+
+    document.querySelectorAll("#profileTabs .tab").forEach((el) => {
+        el.addEventListener("click", () => activateTab(el.dataset.tab));
+    });
+    activateTab("details");
+}
+
+// עדכון הראוטר: כתובת clients/<id> מציגה פרופיל, אחרת רשימה
+ROUTES.clients = (param) => (param ? renderClientProfile(param) : renderClientsList());
+
+// ============================================================
+// לידים
+// ============================================================
+
+const LEAD_STAGES = [
+    { key: "new", label: "ליד חדש", dot: "var(--blue-dot)" },
+    { key: "in_progress", label: "בטיפול", dot: "var(--gold-bar)" },
+    { key: "converted", label: "הומר ללקוחה", dot: "var(--sage-dot)" },
+    { key: "rejected", label: "לא רלוונטי", dot: "var(--pink-dot)" },
+];
+
+async function renderLeads() {
+    setPageHeader("צינור לידים", "ניהול לידים", `<button class="btn btn-primary" id="newLeadBtn">${ICONS.plus(13)} ליד חדש</button>`);
+    document.getElementById("pageBody").innerHTML = `<div class="kanban" id="kanbanBoard"></div>`;
+    document.getElementById("newLeadBtn").addEventListener("click", () => openLeadModal());
+
+    let leads;
+    try {
+        leads = await apiJson("/api/leads");
+    } catch (e) {
+        document.getElementById("kanbanBoard").innerHTML = `<div class="loading-row">שגיאה בטעינה</div>`;
+        return;
+    }
+
+    renderKanbanBoard(leads);
+}
+
+/**
+ * מצייר את לוח הלידים ומחבר גרירה-ושחרור אמיתית (HTML5 DnD) בין
+ * העמודות - גרירת כרטיס לעמודה אחרת שולחת PUT עם הסטטוס החדש.
+ */
+function renderKanbanBoard(leads) {
+    const board = document.getElementById("kanbanBoard");
+    board.innerHTML = LEAD_STAGES.map((stage) => {
+        const stageLeads = leads.filter((l) => l.status === stage.key);
+        return `
+            <div class="kanban-col" data-stage="${stage.key}">
+                <div class="kanban-col-head"><span class="kanban-dot" style="background:${stage.dot};"></span>${stage.label}<span class="kanban-count">${stageLeads.length}</span></div>
+                <div class="kanban-drop-zone" data-stage="${stage.key}">${stageLeads.map((l) => leadCardHtml(l)).join("")}</div>
+            </div>
+        `;
+    }).join("");
+
+    board.querySelectorAll("[data-lead-id]").forEach((card) => {
+        card.addEventListener("click", () => openLeadModal(leads.find((l) => l.lead_id == card.dataset.leadId)));
+
+        card.addEventListener("dragstart", (e) => {
+            e.dataTransfer.setData("text/plain", card.dataset.leadId);
+            e.dataTransfer.effectAllowed = "move";
+            setTimeout(() => card.classList.add("dragging"), 0);
+        });
+        card.addEventListener("dragend", () => card.classList.remove("dragging"));
+    });
+
+    board.querySelectorAll(".kanban-col").forEach((col) => {
+        col.addEventListener("dragover", (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "move";
+            col.style.background = "var(--gold-bg)";
+        });
+        col.addEventListener("dragleave", () => { col.style.background = ""; });
+        col.addEventListener("drop", async (e) => {
+            e.preventDefault();
+            col.style.background = "";
+            const leadId = e.dataTransfer.getData("text/plain");
+            const newStage = col.dataset.stage;
+            const lead = leads.find((l) => String(l.lead_id) === leadId);
+            if (!lead || lead.status === newStage) return;
+
+            try {
+                await apiJson(`/api/leads/${leadId}`, {
+                    method: "PUT",
+                    body: JSON.stringify({
+                        full_name: lead.full_name, phone: lead.phone,
+                        source: lead.source, status: newStage, notes: lead.notes,
+                    }),
+                });
+                lead.status = newStage;
+                renderKanbanBoard(leads);
+                toast("הליד הועבר ל-‏" + LEAD_STAGES.find((s) => s.key === newStage).label, "success");
+            } catch (err) {
+                toast(err.message, "error");
+            }
+        });
+    });
+}
+
+function leadCardHtml(lead) {
+    const initials = (lead.full_name || "").trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("");
+    const colors = TINT_COLORS[tintFor(lead.full_name)];
+    return `
+        <div class="kanban-card clickable" data-lead-id="${lead.lead_id}" draggable="true">
+            <div class="flex items-center gap-8">
+                <div class="avatar" style="width:24px;height:24px;font-size:10.5px;background:${colors.bg};color:${colors.dot};">${escapeHtml(initials)}</div>
+                <div style="font-weight:600;flex:1;min-width:0;">${escapeHtml(lead.full_name)}</div>
+                <span style="color:var(--muted-3);">${ICONS.contact(14)}</span>
+            </div>
+            <div class="text-sm text-muted num ltr mt-8">${escapeHtml(lead.phone)}</div>
+            ${lead.notes ? `<div class="text-sm mt-8">${escapeHtml(lead.notes)}</div>` : ""}
+            <span class="badge gold mt-8">${escapeHtml(lead.source || "")}</span>
+        </div>
+    `;
+}
+
+function openLeadModal(existing) {
+    const sourceOptions = ["facebook", "instagram", "google", "referral", "walk_in"];
+    const sourceLabels = { facebook: "פייסבוק", instagram: "אינסטגרם", google: "גוגל", referral: "הפניה", walk_in: "מהרחוב" };
+    const statusOptions = LEAD_STAGES;
+
+    openModal(existing ? "עריכת ליד" : "ליד חדש", `
+        <div class="field"><label>שם מלא</label><input id="leadName" value="${existing ? escapeHtml(existing.full_name) : ""}"></div>
+        <div class="field"><label>טלפון</label><input id="leadPhone" class="ltr" value="${existing ? escapeHtml(existing.phone) : ""}"></div>
+        <div class="field"><label>מקור</label><select id="leadSource">
+            ${sourceOptions.map((s) => `<option value="${s}" ${existing && existing.source === s ? "selected" : ""}>${sourceLabels[s]}</option>`).join("")}
+        </select></div>
+        ${existing ? `<div class="field"><label>סטטוס</label><select id="leadStatus">
+            ${statusOptions.map((s) => `<option value="${s.key}" ${existing.status === s.key ? "selected" : ""}>${s.label}</option>`).join("")}
+        </select></div>` : ""}
+        <div class="field"><label>הערות</label><textarea id="leadNotes" rows="2">${existing ? escapeHtml(existing.notes || "") : ""}</textarea></div>
+        <div id="leadError" class="field-error"></div>
+        <div class="modal-actions">
+            ${existing ? '<button class="btn btn-danger" id="leadDelete" style="margin-inline-end:auto;">מחיקה</button>' : ""}
+            ${existing && existing.status !== "converted" ? '<button class="btn btn-secondary" id="leadConvert">המרה ללקוחה</button>' : ""}
+            <button class="btn btn-ghost" id="leadCancel">ביטול</button>
+            <button class="btn btn-primary" id="leadSave">שמירה</button>
+        </div>
+    `, {
+        onMount: (overlay) => {
+            overlay.querySelector("#leadCancel").onclick = closeModal;
+            if (existing && overlay.querySelector("#leadDelete")) {
+                overlay.querySelector("#leadDelete").onclick = async () => {
+                    const ok = await confirmAction("למחוק את הליד?");
+                    if (!ok) return;
+                    await apiJson(`/api/leads/${existing.lead_id}`, { method: "DELETE" });
+                    closeModal(); toast("הליד נמחק", "success"); renderLeads();
+                };
+            }
+            if (existing && overlay.querySelector("#leadConvert")) {
+                overlay.querySelector("#leadConvert").onclick = async () => {
+                    try {
+                        await apiJson(`/api/leads/${existing.lead_id}/convert`, { method: "POST", body: JSON.stringify({}) });
+                        closeModal(); toast("הליד הומר ללקוחה", "success"); renderLeads();
+                    } catch (e) { document.getElementById("leadError").textContent = e.message; }
+                };
+            }
+            overlay.querySelector("#leadSave").onclick = async () => {
+                const payload = {
+                    full_name: document.getElementById("leadName").value,
+                    phone: document.getElementById("leadPhone").value,
+                    source: document.getElementById("leadSource").value,
+                    notes: document.getElementById("leadNotes").value || null,
+                };
+                const statusField = document.getElementById("leadStatus");
+                if (statusField) payload.status = statusField.value;
+                try {
+                    if (existing) {
+                        await apiJson(`/api/leads/${existing.lead_id}`, { method: "PUT", body: JSON.stringify(payload) });
+                    } else {
+                        await apiJson("/api/leads", { method: "POST", body: JSON.stringify(payload) });
+                    }
+                    closeModal(); toast("הליד נשמר", "success"); renderLeads();
+                } catch (e) {
+                    document.getElementById("leadError").textContent = e.message;
+                }
+            };
+        },
+    });
+}
+
+// ============================================================
+// קטלוג וחבילות
+// ============================================================
+
+async function renderPackages() {
+    setPageHeader("קטלוג וחבילות", "חבילות טיפולים", hasPermission("package.manage")
+        ? `<button class="btn btn-primary" id="newPackageBtn">+ חבילה חדשה</button>` : "");
+
+    document.getElementById("pageBody").innerHTML = `<div class="card" style="padding:6px;"><table id="packagesTable">
+        <thead><tr><th>שם</th><th>טיפול</th><th>מפגשים</th><th>מחיר</th><th>סטטוס</th></tr></thead>
+        <tbody><tr><td colspan="5" class="loading-row">טוען...</td></tr></tbody>
+    </table></div>`;
+
+    if (document.getElementById("newPackageBtn")) {
+        document.getElementById("newPackageBtn").addEventListener("click", () => openPackageModal());
+    }
+
+    let packages;
+    try {
+        packages = await apiJson("/api/packages");
+    } catch (e) {
+        document.querySelector("#packagesTable tbody").innerHTML = `<tr><td colspan="5" class="loading-row">שגיאה בטעינה</td></tr>`;
+        return;
+    }
+
+    const treatmentName = (id) => (state.treatments.find((t) => t.treatment_id === id) || {}).treatment_name || "-";
+
+    document.querySelector("#packagesTable tbody").innerHTML = packages.length ? packages.map((p) => `
         <tr>
-            <td>#${client.client_id}</td>
-            <td>${escapeHtml(client.full_name)}</td>
-            <td>${escapeHtml(client.phone)}</td>
-            <td>${escapeHtml(client.email || '-')}</td>
-            <td>${escapeHtml(client.address || '-')}</td>
-            <td class="table-actions">
-                <button type="button" class="btn-icon" data-action="history-client"
-                        data-id="${client.client_id}" title="היסטוריה">🕒</button>
-                <button type="button" class="btn-icon" data-action="edit-client"
-                        data-id="${client.client_id}" title="עריכה">✎</button>
-                <button type="button" class="btn-icon btn-icon-danger" data-action="delete-client"
-                        data-id="${client.client_id}" title="מחיקה">🗑</button>
+            <td style="font-weight:600;">${escapeHtml(p.name)}</td>
+            <td>${escapeHtml(treatmentName(p.treatment_id))}</td>
+            <td class="num">${p.total_sessions}</td>
+            <td class="num">₪ ${p.price}</td>
+            <td>${p.is_active ? '<span class="badge sage">פעילה</span>' : '<span class="badge muted">מושבתת</span>'}</td>
+        </tr>
+    `).join("") : `<tr><td colspan="5" class="loading-row">אין עדיין חבילות בקטלוג</td></tr>`;
+}
+
+function openPackageModal() {
+    openModal("חבילה חדשה", `
+        <div class="field"><label>שם החבילה</label><input id="pkgName"></div>
+        <div class="field"><label>טיפול</label><select id="pkgTreatment">${treatmentOptionsHtml()}</select></div>
+        <div class="field-row">
+            <div class="field"><label>מספר מפגשים</label><input type="number" id="pkgSessions" min="1"></div>
+            <div class="field"><label>מחיר</label><input type="number" id="pkgPrice" min="1"></div>
+        </div>
+        <div id="pkgError" class="field-error"></div>
+        <div class="modal-actions">
+            <button class="btn btn-ghost" id="pkgCancel">ביטול</button>
+            <button class="btn btn-primary" id="pkgSave">שמירה</button>
+        </div>
+    `, {
+        onMount: (overlay) => {
+            overlay.querySelector("#pkgCancel").onclick = closeModal;
+            overlay.querySelector("#pkgSave").onclick = async () => {
+                const payload = {
+                    name: document.getElementById("pkgName").value,
+                    treatment_id: parseInt(document.getElementById("pkgTreatment").value, 10),
+                    total_sessions: parseInt(document.getElementById("pkgSessions").value, 10),
+                    price: parseFloat(document.getElementById("pkgPrice").value),
+                };
+                try {
+                    await apiJson("/api/packages", { method: "POST", body: JSON.stringify(payload) });
+                    closeModal(); toast("החבילה נוספה", "success"); renderPackages();
+                } catch (e) { document.getElementById("pkgError").textContent = e.message; }
+            };
+        },
+    });
+}
+
+// ============================================================
+// מכשירים וחדרים
+// ============================================================
+
+async function renderResources() {
+    setPageHeader("מכשירים וחדרים", "משאבי הקליניקה", "");
+    document.getElementById("pageBody").innerHTML = `
+        <div class="grid-2">
+            <div class="card">
+                <div class="flex items-center" style="margin-bottom:16px;">
+                    <h2 class="card-title" style="margin:0;">חדרים</h2>
+                    ${hasPermission("room.manage") ? '<button class="btn btn-secondary btn-sm" id="newRoomBtn" style="margin-inline-start:auto;">+ חדר</button>' : ""}
+                </div>
+                <div id="roomsList"></div>
+            </div>
+            <div class="card">
+                <div class="flex items-center" style="margin-bottom:16px;">
+                    <h2 class="card-title" style="margin:0;">מכשירים</h2>
+                    ${hasPermission("machine.manage") ? '<button class="btn btn-secondary btn-sm" id="newMachineBtn" style="margin-inline-start:auto;">+ מכשיר</button>' : ""}
+                </div>
+                <div id="machinesList"></div>
+            </div>
+        </div>
+    `;
+
+    if (document.getElementById("newRoomBtn")) document.getElementById("newRoomBtn").onclick = () => openRoomModal();
+    if (document.getElementById("newMachineBtn")) document.getElementById("newMachineBtn").onclick = () => openMachineModal();
+
+    await loadReferenceData();
+
+    document.getElementById("roomsList").innerHTML = state.rooms.length ? state.rooms.map((r) => `
+        <div class="flex items-center gap-8" style="padding:10px 4px;border-top:1px solid var(--border-soft);">
+            <span>${escapeHtml(r.name)}</span>
+            <span class="badge ${r.is_active ? "sage" : "muted"}" style="margin-inline-start:auto;">${r.is_active ? "פעיל" : "מושבת"}</span>
+        </div>
+    `).join("") : `<div class="text-sm text-muted">לא הוגדרו חדרים</div>`;
+
+    document.getElementById("machinesList").innerHTML = state.machines.length ? state.machines.map((m) => `
+        <div class="flex items-center gap-8" style="padding:10px 4px;border-top:1px solid var(--border-soft);">
+            <span>${escapeHtml(m.name)}</span>
+            <span class="text-sm text-muted">${escapeHtml(m.machine_type || "")}</span>
+            <span class="badge ${m.is_active ? "sage" : "muted"}" style="margin-inline-start:auto;">${m.is_active ? "פעיל" : "מושבת"}</span>
+        </div>
+    `).join("") : `<div class="text-sm text-muted">לא הוגדרו מכשירים</div>`;
+}
+
+function openRoomModal() {
+    openModal("חדר חדש", `
+        <div class="field"><label>שם החדר</label><input id="roomName"></div>
+        <div id="roomError" class="field-error"></div>
+        <div class="modal-actions">
+            <button class="btn btn-ghost" id="roomCancel">ביטול</button>
+            <button class="btn btn-primary" id="roomSave">שמירה</button>
+        </div>
+    `, {
+        onMount: (overlay) => {
+            overlay.querySelector("#roomCancel").onclick = closeModal;
+            overlay.querySelector("#roomSave").onclick = async () => {
+                try {
+                    await apiJson("/api/rooms", { method: "POST", body: JSON.stringify({ name: document.getElementById("roomName").value }) });
+                    closeModal(); toast("החדר נוסף", "success"); renderResources();
+                } catch (e) { document.getElementById("roomError").textContent = e.message; }
+            };
+        },
+    });
+}
+
+function openMachineModal() {
+    openModal("מכשיר חדש", `
+        <div class="field"><label>שם המכשיר</label><input id="machineName"></div>
+        <div class="field"><label>סוג (רשות)</label><input id="machineType" placeholder="למשל: דיודה, אלכסנדריט"></div>
+        <div id="machineError" class="field-error"></div>
+        <div class="modal-actions">
+            <button class="btn btn-ghost" id="machineCancel">ביטול</button>
+            <button class="btn btn-primary" id="machineSave">שמירה</button>
+        </div>
+    `, {
+        onMount: (overlay) => {
+            overlay.querySelector("#machineCancel").onclick = closeModal;
+            overlay.querySelector("#machineSave").onclick = async () => {
+                try {
+                    await apiJson("/api/machines", {
+                        method: "POST",
+                        body: JSON.stringify({ name: document.getElementById("machineName").value, machine_type: document.getElementById("machineType").value || null }),
+                    });
+                    closeModal(); toast("המכשיר נוסף", "success"); renderResources();
+                } catch (e) { document.getElementById("machineError").textContent = e.message; }
+            };
+        },
+    });
+}
+
+// ============================================================
+// צוות וזמינות
+// ============================================================
+
+const DAY_OF_WEEK_LABELS = ["שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת", "ראשון"];
+
+async function renderStaff() {
+    setPageHeader("צוות וזמינות", "עובדות הקליניקה", hasPermission("user.manage")
+        ? `<button class="btn btn-primary" id="newStaffBtn">+ עובדת חדשה</button>` : "");
+
+    document.getElementById("pageBody").innerHTML = `<div id="staffCards" class="stack"></div>`;
+    if (document.getElementById("newStaffBtn")) document.getElementById("newStaffBtn").onclick = () => openStaffModal();
+
+    let users;
+    try { users = await apiJson("/api/users").then((r) => r.users); }
+    catch (e) { document.getElementById("staffCards").innerHTML = `<div class="loading-row">אין הרשאה לצפות בעמוד זה</div>`; return; }
+
+    const cards = document.getElementById("staffCards");
+    cards.innerHTML = "";
+    for (const user of users) {
+        const card = document.createElement("div");
+        card.className = "card";
+        card.innerHTML = `
+            <div class="flex items-center gap-12">
+                <div class="flex-1">
+                    <div style="font-weight:600;">${escapeHtml(user.full_name)}</div>
+                    <div class="text-sm text-muted">${escapeHtml(user.role_label)} · <span class="num ltr">${escapeHtml(user.phone)}</span></div>
+                </div>
+                <span class="badge ${user.is_active ? "sage" : "muted"}">${user.is_active ? "פעילה" : "מושבתת"}</span>
+                ${hasPermission("staff_schedule.manage") ? `<button class="btn btn-secondary btn-sm" data-avail-for="${user.user_id}">שעות עבודה</button>` : ""}
+            </div>
+            <div id="avail-${user.user_id}" class="mt-16"></div>
+        `;
+        cards.appendChild(card);
+    }
+
+    cards.querySelectorAll("[data-avail-for]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+            const userId = btn.dataset.availFor;
+            const box = document.getElementById("avail-" + userId);
+            if (box.dataset.loaded === "1") { box.innerHTML = ""; box.dataset.loaded = ""; return; }
+            const slots = await apiJson(`/api/staff/${userId}/availability`);
+            box.dataset.loaded = "1";
+            box.innerHTML = `
+                <div style="border-top:1px solid var(--border-soft);padding-top:12px;">
+                    ${slots.map((s) => `<div class="text-sm">${DAY_OF_WEEK_LABELS[s.day_of_week]}: ${s.start_time}–${s.end_time}</div>`).join("") || '<div class="text-sm text-muted">לא הוגדרו שעות עבודה</div>'}
+                    <button class="btn btn-ghost btn-sm mt-8" data-add-avail="${userId}">+ הוספת משבצת</button>
+                </div>
+            `;
+            box.querySelector("[data-add-avail]").addEventListener("click", () => openAvailabilityModal(userId));
+        });
+    });
+}
+
+function openAvailabilityModal(userId) {
+    openModal("הוספת שעות עבודה", `
+        <div class="field"><label>יום בשבוע</label><select id="availDay">
+            ${DAY_OF_WEEK_LABELS.map((label, idx) => `<option value="${idx}">${label}</option>`).join("")}
+        </select></div>
+        <div class="field-row">
+            <div class="field"><label>משעה</label><input type="time" id="availStart" value="09:00"></div>
+            <div class="field"><label>עד שעה</label><input type="time" id="availEnd" value="18:00"></div>
+        </div>
+        <div id="availError" class="field-error"></div>
+        <div class="modal-actions">
+            <button class="btn btn-ghost" id="availCancel">ביטול</button>
+            <button class="btn btn-primary" id="availSave">שמירה</button>
+        </div>
+    `, {
+        onMount: (overlay) => {
+            overlay.querySelector("#availCancel").onclick = closeModal;
+            overlay.querySelector("#availSave").onclick = async () => {
+                try {
+                    await apiJson(`/api/staff/${userId}/availability`, {
+                        method: "POST",
+                        body: JSON.stringify({
+                            day_of_week: parseInt(document.getElementById("availDay").value, 10),
+                            start_time: document.getElementById("availStart").value,
+                            end_time: document.getElementById("availEnd").value,
+                        }),
+                    });
+                    closeModal(); toast("הזמינות נוספה", "success"); renderStaff();
+                } catch (e) { document.getElementById("availError").textContent = e.message; }
+            };
+        },
+    });
+}
+
+function openStaffModal() {
+    openModal("עובדת חדשה", `
+        <div class="field"><label>שם מלא</label><input id="staffName"></div>
+        <div class="field"><label>טלפון (משמש להתחברות)</label><input id="staffPhone" class="ltr"></div>
+        <div class="field"><label>סיסמה זמנית</label><input type="password" id="staffPassword"></div>
+        <div class="field"><label>תפקיד</label><select id="staffRole"><option value="employee">עובדת</option><option value="admin">מנהלת</option></select></div>
+        <div id="staffError" class="field-error"></div>
+        <div class="modal-actions">
+            <button class="btn btn-ghost" id="staffCancel">ביטול</button>
+            <button class="btn btn-primary" id="staffSave">יצירה</button>
+        </div>
+    `, {
+        onMount: (overlay) => {
+            overlay.querySelector("#staffCancel").onclick = closeModal;
+            overlay.querySelector("#staffSave").onclick = async () => {
+                try {
+                    await apiJson("/api/users", {
+                        method: "POST",
+                        body: JSON.stringify({
+                            full_name: document.getElementById("staffName").value,
+                            phone: document.getElementById("staffPhone").value,
+                            password: document.getElementById("staffPassword").value,
+                            role: document.getElementById("staffRole").value,
+                        }),
+                    });
+                    closeModal(); toast("העובדת נוצרה", "success"); renderStaff();
+                } catch (e) { document.getElementById("staffError").textContent = e.message; }
+            };
+        },
+    });
+}
+
+// ============================================================
+// חשבוניות
+// ============================================================
+
+async function renderInvoices() {
+    setPageHeader("חשבוניות", "חשבוניות מס", "");
+    document.getElementById("pageBody").innerHTML = `<div class="card" style="padding:6px;"><table id="invoicesTable">
+        <thead><tr><th>מספר</th><th>תאריך</th><th>סכום</th><th>סטטוס</th><th></th></tr></thead>
+        <tbody><tr><td colspan="5" class="loading-row">טוען...</td></tr></tbody>
+    </table></div>`;
+
+    let invoices;
+    try { invoices = await apiJson("/api/invoices?include_cancelled=true"); }
+    catch (e) { document.querySelector("#invoicesTable tbody").innerHTML = `<tr><td colspan="5" class="loading-row">שגיאה בטעינה</td></tr>`; return; }
+
+    document.querySelector("#invoicesTable tbody").innerHTML = invoices.length ? invoices.map((inv) => `
+        <tr>
+            <td class="num" style="font-weight:600;">${inv.invoice_number}</td>
+            <td>${formatDateHe(inv.invoice_date)}</td>
+            <td class="num">₪ ${inv.amount}</td>
+            <td>${inv.is_cancelled ? '<span class="badge muted">מבוטלת</span>' : '<span class="badge sage">פעילה</span>'}</td>
+            <td>
+                ${hasPermission("invoice.cancel") ? (inv.is_cancelled
+                    ? `<button class="btn btn-ghost btn-sm" data-restore="${inv.invoice_id}">שחזור</button>`
+                    : `<button class="btn btn-ghost btn-sm" data-cancel="${inv.invoice_id}">ביטול</button>`) : ""}
             </td>
         </tr>
-    `).join('');
-    setTableResult('clients', clients.length > 0);
+    `).join("") : `<tr><td colspan="5" class="loading-row">אין עדיין חשבוניות</td></tr>`;
+
+    document.querySelectorAll("[data-cancel]").forEach((btn) => btn.addEventListener("click", async () => {
+        await apiJson(`/api/invoices/${btn.dataset.cancel}/cancel`, { method: "POST" });
+        toast("החשבונית בוטלה", "success"); renderInvoices();
+    }));
+    document.querySelectorAll("[data-restore]").forEach((btn) => btn.addEventListener("click", async () => {
+        await apiJson(`/api/invoices/${btn.dataset.restore}/restore`, { method: "POST" });
+        toast("החשבונית שוחזרה", "success"); renderInvoices();
+    }));
 }
-
-async function loadClients() {
-    setTableLoading('clients');
-    try {
-        clientsCache = await apiRequest('GET', '/api/clients');
-        qs('#client-search').value = '';
-        renderClientsTable(clientsCache);
-    } catch (error) {
-        showToast(error.message || 'שגיאה בטעינת לקוחות', 'error');
-        setTableResult('clients', false);
-    }
-}
-
-// חיפוש לקוח - סינון מקומי מיידי על המטמון, בלי לפנות שוב לשרת
-function handleClientSearch(event) {
-    const term = event.target.value.trim().toLowerCase();
-    const filtered = clientsCache.filter((client) => (
-        client.full_name.toLowerCase().includes(term) || client.phone.includes(term)
-    ));
-    renderClientsTable(filtered);
-}
-
-function openClientModal(mode, clientId) {
-    const form = qs('#form-client');
-    form.reset();
-    clearFormErrors(form);
-    qs('#client-id').value = '';
-
-    if (mode === 'edit') {
-        const client = clientsCache.find((c) => c.client_id === clientId);
-        qs('#modal-client-title').textContent = 'עריכת לקוח';
-        if (client) {
-            qs('#client-id').value = client.client_id;
-            qs('#client-name').value = client.full_name;
-            qs('#client-phone').value = client.phone;
-            qs('#client-email').value = client.email || '';
-            qs('#client-address').value = client.address || '';
-        }
-    } else {
-        qs('#modal-client-title').textContent = 'הוספת לקוח חדש';
-    }
-
-    openModal('modal-client');
-}
-
-async function openClientHistoryModal(clientId) {
-    openModal('modal-client-history');
-    qs('#modal-client-history-title').textContent = 'היסטוריית לקוח';
-
-    try {
-        const data = await apiRequest('GET', `/api/clients/${clientId}/history`);
-        qs('#modal-client-history-title').textContent = `היסטוריה - ${data.client.full_name}`;
-
-        const apptTbody = getTableElements('client-history-appointments').tbody;
-        apptTbody.innerHTML = data.appointments.map((appt) => `
-            <tr>
-                <td>${escapeHtml(appt.appointment_date)}</td>
-                <td>${escapeHtml(appt.appointment_time)}</td>
-                <td>${escapeHtml(appt.treatment_name || '-')}</td>
-                <td>${renderStatusBadge(appt.status)}</td>
-            </tr>
-        `).join('');
-        setTableResult('client-history-appointments', data.appointments.length > 0);
-
-        const invTbody = getTableElements('client-history-invoices').tbody;
-        invTbody.innerHTML = data.invoices.map((inv) => `
-            <tr>
-                <td>${escapeHtml(inv.invoice_number)}</td>
-                <td>${formatCurrency(inv.amount)}</td>
-                <td>${escapeHtml(inv.invoice_date)}</td>
-                <td>${inv.is_cancelled
-                    ? '<span class="badge badge-cancelled">מבוטלת</span>'
-                    : '<span class="badge badge-completed">פעילה</span>'}</td>
-            </tr>
-        `).join('');
-        setTableResult('client-history-invoices', data.invoices.length > 0);
-
-        qs('[data-field="client-history-total"]').textContent = formatCurrency(data.total_active_amount);
-    } catch (error) {
-        showToast(error.message || 'שגיאה בטעינת ההיסטוריה', 'error');
-        closeModal('modal-client-history');
-    }
-}
-
-async function handleClientSubmit(event) {
-    event.preventDefault();
-    const form = event.target;
-    clearFormErrors(form);
-
-    const fullName = qs('#client-name').value;
-    const phone = qs('#client-phone').value;
-    const email = qs('#client-email').value;
-    const address = qs('#client-address').value.trim();
-    const clientId = qs('#client-id').value;
-
-    const nameError = validateNameLocal(fullName);
-    const phoneError = validatePhoneLocal(phone);
-    const emailError = validateEmailLocal(email);
-
-    let hasError = false;
-    if (nameError) { setFieldError('client-name', nameError); hasError = true; }
-    if (phoneError) { setFieldError('client-phone', phoneError); hasError = true; }
-    if (emailError) { setFieldError('client-email', emailError); hasError = true; }
-    if (hasError) return;
-
-    const payload = {
-        full_name: fullName.trim(),
-        phone: phone.trim(),
-        email: email.trim() || null,
-        address: address || null,
-    };
-
-    setFormBusy('form-client', true);
-    try {
-        if (clientId) {
-            await apiRequest('PUT', `/api/clients/${clientId}`, payload);
-            showToast('פרטי הלקוח עודכנו', 'success');
-        } else {
-            await apiRequest('POST', '/api/clients', payload);
-            showToast('הלקוח נוסף בהצלחה', 'success');
-        }
-        closeModal('modal-client');
-        loadClients();
-    } catch (error) {
-        handleFormError(error, CLIENT_FIELD_MAP, 'שמירת הלקוח נכשלה');
-    } finally {
-        setFormBusy('form-client', false);
-    }
-}
-
-function wireClientsScreen() {
-    qs('#btn-add-client').addEventListener('click', () => openClientModal('add'));
-    qs('#client-search').addEventListener('input', handleClientSearch);
-    qs('#form-client').addEventListener('submit', handleClientSubmit);
-}
-
-
-// ---------------------------------------------------------------
-// 9.4 טיפולים
-// ---------------------------------------------------------------
-
-const TREATMENT_FIELD_MAP = {
-    treatment_name: 'treatment-name',
-    body_area: 'treatment-area',
-    price: 'treatment-price',
-    duration_minutes: 'treatment-duration',
-};
-
-async function loadTreatments() {
-    setTableLoading('treatments');
-    try {
-        treatmentsCache = await apiRequest('GET', '/api/treatments');
-        const tbody = getTableElements('treatments').tbody;
-
-        tbody.innerHTML = treatmentsCache.map((treatment) => `
-            <tr>
-                <td>#${treatment.treatment_id}</td>
-                <td>${escapeHtml(treatment.treatment_name)}</td>
-                <td>${escapeHtml(treatment.body_area)}</td>
-                <td>${formatCurrency(treatment.price)}</td>
-                <td>${treatment.duration_minutes}</td>
-                <td class="table-actions">
-                    <button type="button" class="btn-icon" data-action="edit-treatment"
-                            data-id="${treatment.treatment_id}" title="עריכה">✎</button>
-                </td>
-            </tr>
-        `).join('');
-
-        setTableResult('treatments', treatmentsCache.length > 0);
-    } catch (error) {
-        showToast(error.message || 'שגיאה בטעינת טיפולים', 'error');
-        setTableResult('treatments', false);
-    }
-}
-
-function openTreatmentModal(mode, treatmentId) {
-    const form = qs('#form-treatment');
-    form.reset();
-    clearFormErrors(form);
-    qs('#treatment-id').value = '';
-
-    if (mode === 'edit') {
-        const treatment = treatmentsCache.find((t) => t.treatment_id === treatmentId);
-        qs('#modal-treatment-title').textContent = 'עריכת טיפול';
-        if (treatment) {
-            qs('#treatment-id').value = treatment.treatment_id;
-            qs('#treatment-name').value = treatment.treatment_name;
-            qs('#treatment-area').value = treatment.body_area;
-            qs('#treatment-price').value = treatment.price;
-            qs('#treatment-duration').value = treatment.duration_minutes;
-        }
-    } else {
-        qs('#modal-treatment-title').textContent = 'הוספת טיפול';
-    }
-
-    openModal('modal-treatment');
-}
-
-async function handleTreatmentSubmit(event) {
-    event.preventDefault();
-    const form = event.target;
-    clearFormErrors(form);
-
-    const name = qs('#treatment-name').value;
-    const area = qs('#treatment-area').value;
-    const price = qs('#treatment-price').value;
-    const duration = qs('#treatment-duration').value;
-    const treatmentId = qs('#treatment-id').value;
-
-    let hasError = false;
-    if (!name.trim()) { setFieldError('treatment-name', 'שם הטיפול לא יכול להיות ריק'); hasError = true; }
-    if (!area.trim()) { setFieldError('treatment-area', 'יש להזין לפחות איזור אחד'); hasError = true; }
-
-    const priceError = validatePositiveNumberLocal(price, 'המחיר');
-    if (priceError) { setFieldError('treatment-price', priceError); hasError = true; }
-
-    const durationError = validatePositiveNumberLocal(duration, 'משך הטיפול');
-    if (durationError) { setFieldError('treatment-duration', durationError); hasError = true; }
-
-    if (hasError) return;
-
-    const payload = {
-        treatment_name: name.trim(),
-        body_area: area.trim(),
-        price: Number(price),
-        duration_minutes: Number(duration),
-    };
-
-    setFormBusy('form-treatment', true);
-    try {
-        if (treatmentId) {
-            await apiRequest('PUT', `/api/treatments/${treatmentId}`, payload);
-            showToast('הטיפול עודכן', 'success');
-        } else {
-            await apiRequest('POST', '/api/treatments', payload);
-            showToast('הטיפול נוסף לקטלוג', 'success');
-        }
-        closeModal('modal-treatment');
-        loadTreatments();
-    } catch (error) {
-        handleFormError(error, TREATMENT_FIELD_MAP, 'שמירת הטיפול נכשלה');
-    } finally {
-        setFormBusy('form-treatment', false);
-    }
-}
-
-async function handleSeedTreatments() {
-    try {
-        const result = await apiRequest('POST', '/api/treatments/seed');
-        if (result.added_count > 0) {
-            showToast(`נוספו ${result.added_count} טיפולים לקטלוג`, 'success');
-        } else {
-            showToast('הקטלוג כבר מכיל טיפולים - לא בוצע שינוי', 'success');
-        }
-        loadTreatments();
-    } catch (error) {
-        showToast(error.message || 'אתחול הקטלוג נכשל', 'error');
-    }
-}
-
-function wireTreatmentsScreen() {
-    qs('#btn-add-treatment').addEventListener('click', () => openTreatmentModal('add'));
-    qs('#btn-seed-treatments').addEventListener('click', handleSeedTreatments);
-    qs('#form-treatment').addEventListener('submit', handleTreatmentSubmit);
-}
-
-
-// ---------------------------------------------------------------
-// 9.5 חשבוניות
-// ---------------------------------------------------------------
-
-const INVOICE_FIELD_MAP = {
-    client_id: 'invoice-client',
-    amount: 'invoice-amount',
-    invoice_date: 'invoice-date',
-    appointment_id: 'invoice-appointment',
-};
-
-async function loadInvoices() {
-    setTableLoading('invoices');
-    const includeCancelled = qs('#invoices-show-cancelled').checked;
-
-    try {
-        const [invoices, clients] = await Promise.all([
-            apiRequest('GET', `/api/invoices?include_cancelled=${includeCancelled}`),
-            apiRequest('GET', '/api/clients'),
-        ]);
-
-        // ל-invoice יש רק client_id - בונים מפה מהירה כדי להציג שם לקוח בטבלה
-        const clientNameById = {};
-        clients.forEach((client) => { clientNameById[client.client_id] = client.full_name; });
-
-        const tbody = getTableElements('invoices').tbody;
-        tbody.innerHTML = invoices.map((invoice) => {
-            const clientName = clientNameById[invoice.client_id] || `#${invoice.client_id}`;
-            const statusBadge = invoice.is_cancelled
-                ? '<span class="badge badge-cancelled">מבוטלת</span>'
-                : '<span class="badge badge-completed">פעילה</span>';
-            const actionButton = invoice.is_cancelled
-                ? `<button type="button" class="btn-icon" data-action="restore-invoice"
-                           data-id="${invoice.invoice_id}" title="שחזור">↩</button>`
-                : `<button type="button" class="btn-icon btn-icon-danger" data-action="cancel-invoice"
-                           data-id="${invoice.invoice_id}" title="ביטול">✕</button>`;
-
-            return `
-                <tr>
-                    <td>${escapeHtml(invoice.invoice_number)}</td>
-                    <td>${escapeHtml(clientName)}</td>
-                    <td>${formatCurrency(invoice.amount)}</td>
-                    <td>${escapeHtml(invoice.invoice_date)}</td>
-                    <td>${statusBadge}</td>
-                    <td class="table-actions">${actionButton}</td>
-                </tr>
-            `;
-        }).join('');
-
-        setTableResult('invoices', invoices.length > 0);
-
-        const activeTotal = invoices
-            .filter((invoice) => !invoice.is_cancelled)
-            .reduce((sum, invoice) => sum + invoice.amount, 0);
-        qs('[data-field="invoices-total"]').textContent = formatCurrency(activeTotal);
-    } catch (error) {
-        showToast(error.message || 'שגיאה בטעינת חשבוניות', 'error');
-        setTableResult('invoices', false);
-    }
-}
-
-async function openInvoiceModal() {
-    const form = qs('#form-invoice');
-    form.reset();
-    clearFormErrors(form);
-
-    try {
-        const [clients, appointments] = await Promise.all([
-            apiRequest('GET', '/api/clients'),
-            apiRequest('GET', '/api/appointments'),
-        ]);
-
-        fillSelectOptions(qs('#invoice-client'), clients, 'client_id',
-            (c) => `${c.full_name} - ${c.phone}`, 'בחר לקוח...');
-
-        const appointmentSelect = qs('#invoice-appointment');
-        const options = ['<option value="" selected>ללא קישור לתור</option>'];
-        appointments.forEach((appt) => {
-            const label = `#${appt.appointment_id} - ${appt.client_name} - ${appt.treatment_name} (${appt.appointment_date})`;
-            options.push(`<option value="${appt.appointment_id}">${escapeHtml(label)}</option>`);
-        });
-        appointmentSelect.innerHTML = options.join('');
-    } catch (error) {
-        showToast('שגיאה בטעינת רשימת לקוחות/תורים', 'error');
-    }
-
-    qs('#invoice-date').value = todayIso();
-    openModal('modal-invoice');
-}
-
-async function handleInvoiceSubmit(event) {
-    event.preventDefault();
-    const form = event.target;
-    clearFormErrors(form);
-
-    const clientId = qs('#invoice-client').value;
-    const amount = qs('#invoice-amount').value;
-    const date = qs('#invoice-date').value;
-    const appointmentId = qs('#invoice-appointment').value;
-
-    let hasError = false;
-    if (!clientId) { setFieldError('invoice-client', 'יש לבחור לקוח'); hasError = true; }
-
-    const amountError = validatePositiveNumberLocal(amount, 'הסכום');
-    if (amountError) { setFieldError('invoice-amount', amountError); hasError = true; }
-
-    if (!date) { setFieldError('invoice-date', 'התאריך לא יכול להיות ריק'); hasError = true; }
-    if (hasError) return;
-
-    const payload = {
-        client_id: Number(clientId),
-        amount: Number(amount),
-        invoice_date: date,
-        appointment_id: appointmentId ? Number(appointmentId) : null,
-    };
-
-    setFormBusy('form-invoice', true, 'מפיק...');
-    try {
-        const result = await apiRequest('POST', '/api/invoices', payload);
-        showToast(`הופקה חשבונית ${result.invoice_number}`, 'success');
-        closeModal('modal-invoice');
-        loadInvoices();
-    } catch (error) {
-        handleFormError(error, INVOICE_FIELD_MAP, 'הפקת החשבונית נכשלה');
-    } finally {
-        setFormBusy('form-invoice', false);
-    }
-}
-
-function wireInvoicesScreen() {
-    qs('#btn-add-invoice').addEventListener('click', openInvoiceModal);
-    qs('#invoices-show-cancelled').addEventListener('change', loadInvoices);
-    qs('#form-invoice').addEventListener('submit', handleInvoiceSubmit);
-}
-
-
-// ---------------------------------------------------------------
-// 9.6 לידים
-// ---------------------------------------------------------------
-
-const LEAD_FIELD_MAP = {
-    full_name: 'lead-name',
-    phone: 'lead-phone',
-    source: 'lead-source',
-    status: 'lead-status',
-};
-
-async function loadLeads() {
-    setTableLoading('leads');
-    try {
-        leadsCache = await apiRequest('GET', '/api/leads');
-        const tbody = getTableElements('leads').tbody;
-
-        tbody.innerHTML = leadsCache.map((lead) => {
-            const convertButton = lead.status === 'converted' ? '' : (
-                `<button type="button" class="btn-icon" data-action="convert-lead"
-                         data-id="${lead.lead_id}" title="המרה ללקוח">➜</button>`
-            );
-
-            return `
-                <tr>
-                    <td>#${lead.lead_id}</td>
-                    <td>${escapeHtml(lead.full_name)}</td>
-                    <td>${escapeHtml(lead.phone)}</td>
-                    <td>${escapeHtml(SOURCE_LABELS[lead.source] || lead.source || '-')}</td>
-                    <td>${renderStatusBadge(lead.status)}</td>
-                    <td>${escapeHtml(lead.notes || '-')}</td>
-                    <td class="table-actions">
-                        ${convertButton}
-                        <button type="button" class="btn-icon" data-action="edit-lead"
-                                data-id="${lead.lead_id}" title="עריכה">✎</button>
-                        <button type="button" class="btn-icon btn-icon-danger" data-action="delete-lead"
-                                data-id="${lead.lead_id}" title="מחיקה">🗑</button>
-                    </td>
-                </tr>
-            `;
-        }).join('');
-
-        setTableResult('leads', leadsCache.length > 0);
-    } catch (error) {
-        showToast(error.message || 'שגיאה בטעינת לידים', 'error');
-        setTableResult('leads', false);
-    }
-}
-
-function openLeadModal(mode, leadId) {
-    const form = qs('#form-lead');
-    form.reset();
-    clearFormErrors(form);
-    qs('#lead-id').value = '';
-    qs('#lead-status-group').hidden = true;
-
-    if (mode === 'edit') {
-        const lead = leadsCache.find((l) => l.lead_id === leadId);
-        qs('#modal-lead-title').textContent = 'עריכת ליד';
-        qs('#lead-status-group').hidden = false;
-        if (lead) {
-            qs('#lead-id').value = lead.lead_id;
-            qs('#lead-name').value = lead.full_name;
-            qs('#lead-phone').value = lead.phone;
-            qs('#lead-source').value = lead.source || '';
-            qs('#lead-status').value = lead.status;
-            qs('#lead-notes').value = lead.notes || '';
-        }
-    } else {
-        qs('#modal-lead-title').textContent = 'הוספת ליד חדש';
-    }
-
-    openModal('modal-lead');
-}
-
-async function handleLeadSubmit(event) {
-    event.preventDefault();
-    const form = event.target;
-    clearFormErrors(form);
-
-    const name = qs('#lead-name').value;
-    const phone = qs('#lead-phone').value;
-    const source = qs('#lead-source').value;
-    const notes = qs('#lead-notes').value.trim();
-    const leadId = qs('#lead-id').value;
-
-    const nameError = validateNameLocal(name);
-    const phoneError = validatePhoneLocal(phone);
-
-    let hasError = false;
-    if (nameError) { setFieldError('lead-name', nameError); hasError = true; }
-    if (phoneError) { setFieldError('lead-phone', phoneError); hasError = true; }
-    if (hasError) return;
-
-    const payload = {
-        full_name: name.trim(),
-        phone: phone.trim(),
-        source: source || null,
-        notes: notes || null,
-    };
-    if (leadId) {
-        payload.status = qs('#lead-status').value;
-    }
-
-    setFormBusy('form-lead', true);
-    try {
-        if (leadId) {
-            await apiRequest('PUT', `/api/leads/${leadId}`, payload);
-            showToast('הליד עודכן', 'success');
-        } else {
-            await apiRequest('POST', '/api/leads', payload);
-            showToast('הליד נוסף בהצלחה', 'success');
-        }
-        closeModal('modal-lead');
-        loadLeads();
-    } catch (error) {
-        handleFormError(error, LEAD_FIELD_MAP, 'שמירת הליד נכשלה');
-    } finally {
-        setFormBusy('form-lead', false);
-    }
-}
-
-function openLeadConvertModal(leadId) {
-    const lead = leadsCache.find((l) => l.lead_id === leadId);
-    const form = qs('#form-lead-convert');
-    form.reset();
-    clearFormErrors(form);
-    qs('#lead-convert-id').value = leadId;
-    qs('#lead-convert-summary').textContent = lead
-        ? `המרת "${lead.full_name}" (${lead.phone}) ללקוח קבוע`
-        : '';
-    openModal('modal-lead-convert');
-}
-
-async function handleLeadConvertSubmit(event) {
-    event.preventDefault();
-    const form = event.target;
-    clearFormErrors(form);
-
-    const leadId = qs('#lead-convert-id').value;
-    const email = qs('#lead-convert-email').value;
-    const address = qs('#lead-convert-address').value.trim();
-
-    const emailError = validateEmailLocal(email);
-    if (emailError) { setFieldError('lead-convert-email', emailError); return; }
-
-    setFormBusy('form-lead-convert', true, 'ממיר...');
-    try {
-        const client = await apiRequest('POST', `/api/leads/${leadId}/convert`, {
-            email: email.trim() || null,
-            address: address || null,
-        });
-        showToast(`הליד הומר ללקוח #${client.client_id} בהצלחה`, 'success');
-        closeModal('modal-lead-convert');
-        loadLeads();
-    } catch (error) {
-        if (error.field === 'email') {
-            setFieldError('lead-convert-email', error.message);
-        } else {
-            showToast(error.message || 'ההמרה נכשלה', 'error');
-        }
-    } finally {
-        setFormBusy('form-lead-convert', false);
-    }
-}
-
-function wireLeadsScreen() {
-    qs('#btn-add-lead').addEventListener('click', () => openLeadModal('add'));
-    qs('#form-lead').addEventListener('submit', handleLeadSubmit);
-    qs('#form-lead-convert').addEventListener('submit', handleLeadConvertSubmit);
-}
-
 
 // ============================================================
-// פעולות טבלה דינמיות (עריכה/מחיקה/וכו') - Event Delegation
-// הטבלאות נבנות מחדש בכל טעינה, אז במקום לחבר מאזין לכל כפתור
-// בנפרד, מאזינים פעם אחת ברמת ה-document ובודקים data-action
+// יומן ביקורת
 // ============================================================
 
-function wireRowActions() {
-    document.addEventListener('click', (event) => {
-        const button = event.target.closest('[data-action]');
-        if (!button) return;
+async function renderAudit() {
+    setPageHeader("יומן ביקורת", "פעולות אחרונות במערכת", "");
+    document.getElementById("pageBody").innerHTML = `<div class="card" style="padding:6px;"><table id="auditTable">
+        <thead><tr><th>מתי</th><th>מי</th><th>פעולה</th><th>פרטים</th></tr></thead>
+        <tbody><tr><td colspan="4" class="loading-row">טוען...</td></tr></tbody>
+    </table></div>`;
 
-        const action = button.dataset.action;
-        const id = button.dataset.id ? Number(button.dataset.id) : null;
+    let entries;
+    try { entries = await apiJson("/api/users/audit?limit=100").then((r) => r.entries); }
+    catch (e) { document.querySelector("#auditTable tbody").innerHTML = `<tr><td colspan="4" class="loading-row">אין הרשאה לצפות בעמוד זה</td></tr>`; return; }
 
-        switch (action) {
-            case 'edit-appointment':
-                openAppointmentModal('edit', id);
-                break;
-
-            case 'delete-appointment':
-                showConfirm('מחיקת תור', 'האם למחוק את התור? לא ניתן לשחזר פעולה זו.', async () => {
-                    try {
-                        await apiRequest('DELETE', `/api/appointments/${id}`);
-                        showToast('התור נמחק', 'success');
-                        loadAppointments();
-                    } catch (error) {
-                        showToast(error.message || 'המחיקה נכשלה', 'error');
-                    }
-                });
-                break;
-
-            case 'edit-client':
-                openClientModal('edit', id);
-                break;
-
-            case 'history-client':
-                openClientHistoryModal(id);
-                break;
-
-            case 'delete-client':
-                showConfirm('מחיקת לקוח', 'האם למחוק את הלקוח? פעולה זו אינה הפיכה.', async () => {
-                    try {
-                        await apiRequest('DELETE', `/api/clients/${id}`);
-                        showToast('הלקוח נמחק', 'success');
-                        loadClients();
-                    } catch (error) {
-                        showToast(error.message || 'המחיקה נכשלה', 'error');
-                    }
-                });
-                break;
-
-            case 'edit-treatment':
-                openTreatmentModal('edit', id);
-                break;
-
-            case 'cancel-invoice':
-                showConfirm(
-                    'ביטול חשבונית',
-                    'לפי חוק לא ניתן למחוק חשבונית שהונפקה - רק לבטל אותה. להמשיך?',
-                    async () => {
-                        try {
-                            await apiRequest('POST', `/api/invoices/${id}/cancel`);
-                            showToast('החשבונית בוטלה', 'success');
-                            loadInvoices();
-                        } catch (error) {
-                            showToast(error.message || 'הביטול נכשל', 'error');
-                        }
-                    }
-                );
-                break;
-
-            case 'restore-invoice':
-                (async () => {
-                    try {
-                        await apiRequest('POST', `/api/invoices/${id}/restore`);
-                        showToast('החשבונית שוחזרה', 'success');
-                        loadInvoices();
-                    } catch (error) {
-                        showToast(error.message || 'השחזור נכשל', 'error');
-                    }
-                })();
-                break;
-
-            case 'edit-lead':
-                openLeadModal('edit', id);
-                break;
-
-            case 'delete-lead':
-                showConfirm('מחיקת ליד', 'האם למחוק את הליד?', async () => {
-                    try {
-                        await apiRequest('DELETE', `/api/leads/${id}`);
-                        showToast('הליד נמחק', 'success');
-                        loadLeads();
-                    } catch (error) {
-                        showToast(error.message || 'המחיקה נכשלה', 'error');
-                    }
-                });
-                break;
-
-            case 'convert-lead':
-                openLeadConvertModal(id);
-                break;
-
-            case 'pick-slot':
-                qs('#appt-time').value = button.dataset.time;
-                break;
-
-            default:
-                break;
-        }
-    });
+    document.querySelector("#auditTable tbody").innerHTML = entries.length ? entries.map((e) => `
+        <tr>
+            <td class="text-sm text-muted num">${escapeHtml(e.created_at || "")}</td>
+            <td>${escapeHtml(e.user_name || "מערכת")}</td>
+            <td>${escapeHtml(e.action)}</td>
+            <td class="text-sm text-muted">${escapeHtml(e.details || "")}</td>
+        </tr>
+    `).join("") : `<tr><td colspan="4" class="loading-row">אין עדיין רשומות</td></tr>`;
 }
 
-
-// ============================================================
-// 10. אתחול - מריץ פעם אחת כשה-DOM מוכן
-// ============================================================
-
-function init() {
-    wireNavigation();
-    wireModalsAndConfirm();
-    wireRowActions();
-
-    wireAppointmentsScreen();
-    wireClientsScreen();
-    wireTreatmentsScreen();
-    wireInvoicesScreen();
-    wireLeadsScreen();
-
-    // המסך הראשון שמוצג הוא הדשבורד (מסומן is-active כברירת מחדל ב-HTML)
-    loadDashboard();
-}
-
-document.addEventListener('DOMContentLoaded', init);
+boot();

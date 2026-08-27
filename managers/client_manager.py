@@ -1,206 +1,122 @@
 # ============================================================
 # managers/client_manager.py
-# מנהל הלקוחות - אחראי על כל הפעולות מול טבלת clients
-# מכיל 5 מתודות CRUD: insert, get_by_id, get_all, update, delete
+# מנהל הלקוחות - גרסת ORM (SQLAlchemy).
+#
+# חתימות המתודות ואופן הקריאה נשארו זהים לגרסה הקודמת (raw SQL)
+# בכוונה: insert_client/update_client עדיין מקבלים אובייקט עם
+# full_name/phone/email/address (למשל entities.client.Client),
+# וכל מתודת get_* עדיין מחזירה אובייקט עם אותם שדות בדיוק -
+# כך שהצ'אטבוט (chatbot/flows.py, chatbot/verification.py) וכל
+# קוד אחר שכבר צורך את המנהל הזה ממשיכים לעבוד בלי שום שינוי.
 # ============================================================
 
-from database import get_connection
-from entities.client import Client
+from models import Client as ClientModel
+from db import get_session
 from utils.db_errors import translate_db_error
+from utils.datetime_utils import now_jerusalem
+
 
 class ClientManager:
     """
-    Manager Class לניהול לקוחות במערכת.
-    כל הפעולות מול טבלת clients עוברות דרך המחלקה הזאת.
-    
+    Manager Class לניהול לקוחות במערכת, מגובה ORM.
+
     בכל פעולה שנכשלת, הודעת השגיאה נשמרת ב-last_error
     וניתן לקרוא אותה מיד אחרי הקריאה.
     """
 
     def __init__(self):
-        # הודעת השגיאה האחרונה - None כשהכל תקין
         self.last_error = None
+
+    @property
+    def session(self):
+        """
+        get_session() נקרא בכל גישה מחדש (לא נשמר ב-__init__) כי
+        ה-manager נוצר פעם אחת ברמת המודול, וזה scoped_session לפי
+        thread - ראו ההסבר המלא ב-managers/user_manager.py.
+        """
+        return get_session()
 
     def insert_client(self, client):
         """
         מוסיף לקוח חדש לבסיס הנתונים.
-        מחזיר את האובייקט עם client_id, או None אם נכשל.
-        במקרה כישלון - ההסבר נמצא ב-self.last_error
+        מחזיר את אובייקט ה-ORM עם client_id, או None אם נכשל.
+
+        profile_completed_at מסומן "עכשיו" במפורש: זהו מסלול היצירה
+        ה"רגיל" (טופס הצוות, בדיקות) - בניגוד ל"שלד" הזמני שהפורטל
+        יוצר (identity.identify_or_create_shell, שעוקף את המנהל הזה
+        ובונה Client ישירות עם profile_completed_at=None בכוונה).
         """
-        # מאפסים שגיאה קודמת בתחילת כל פעולה
         self.last_error = None
-        connection = None
+
+        row = ClientModel(
+            full_name=client.full_name,
+            phone=client.phone,
+            email=client.email,
+            address=client.address,
+            profile_completed_at=now_jerusalem().isoformat(),
+        )
 
         try:
-            connection = get_connection()
-            cursor = connection.cursor()
-
-            sql_query = """
-                INSERT INTO clients (
-                    full_name, phone, email, address
-                ) VALUES (?, ?, ?, ?)
-            """
-
-            values = (
-                client.full_name,
-                client.phone,
-                client.email,
-                client.address
-            )
-
-            cursor.execute(sql_query, values)
-            client.client_id = cursor.lastrowid
-
-            connection.commit()
-            return client
+            self.session.add(row)
+            self.session.commit()
+            return row
 
         except Exception as error:
-            # מבטלים שינויים חלקיים
-            if connection is not None:
-                connection.rollback()
-
+            self.session.rollback()
             self.last_error = translate_db_error(error, "הוספת לקוח")
             return None
 
-        finally:
-            # תמיד סוגרים - גם בהצלחה וגם בכישלון
-            if connection is not None:
-                connection.close()
-
-
     def get_client_by_id(self, client_id):
-        """
-        שולף לקוח בודד לפי מזהה.
-        מחזיר אובייקט Client, או None אם הלקוח לא נמצא.
-        """
-        connection = get_connection()
-        cursor = connection.cursor()
-        
-        sql_query = "SELECT * FROM clients WHERE client_id = ?"
-        cursor.execute(sql_query, (client_id,))
-        
-        row = cursor.fetchone()
-        connection.close()
-        
-        # אם לא נמצא לקוח - מחזירים None
-        if row is None:
-            return None
-        
-        # ממירים את השורה (tuple) לאובייקט Client
-        client = Client(
-            client_id=row[0],
-            full_name=row[1],
-            phone=row[2],
-            email=row[3],
-            address=row[4]
-        )
-        
-        return client
-
+        """שולף לקוח בודד לפי מזהה. מחזיר None אם לא נמצא."""
+        return self.session.get(ClientModel, client_id)
 
     def get_all_clients(self):
-        """
-        שולף את כל הלקוחות במערכת.
-        מחזיר רשימה של אובייקטי Client (יכולה להיות ריקה).
-        """
-        connection = get_connection()
-        cursor = connection.cursor()
-        
-        # ממויין לפי שם - כדי שקל יהיה למצוא לקוחות בתפריט
-        sql_query = "SELECT * FROM clients ORDER BY full_name"
-        cursor.execute(sql_query)
-        
-        rows = cursor.fetchall()
-        connection.close()
-        
-        clients = []
-        
-        # ממירים כל שורה לאובייקט Client ומוסיפים לרשימה
-        for row in rows:
-            client = Client(
-                client_id=row[0],
-                full_name=row[1],
-                phone=row[2],
-                email=row[3],
-                address=row[4]
-            )
-            clients.append(client)
-        
-        return clients
-
+        """שולף את כל הלקוחות, ממויין לפי שם."""
+        return (
+            self.session.query(ClientModel)
+            .order_by(ClientModel.full_name)
+            .all()
+        )
 
     def update_client(self, client):
         """
-        מעדכן לקוח קיים בבסיס הנתונים.
-        מחזיר True אם עודכן בהצלחה, False אם הלקוח לא נמצא.
+        מעדכן לקוח קיים. מחזיר True אם עודכן, False אם לא נמצא.
         """
-        # בדיקה שיש client_id - אחרת אין מה לעדכן
         if client.client_id is None:
             return False
-        
-        connection = get_connection()
-        cursor = connection.cursor()
-        
-        # שאילתת עדכון - עם WHERE! חשוב מאוד למניעת עדכון של כל הטבלה
-        sql_query = """
-            UPDATE clients
-            SET full_name = ?,
-                phone = ?,
-                email = ?,
-                address = ?
-            WHERE client_id = ?
-        """
-        
-        # הערכים - ה-client_id בסוף (מתאים ל-WHERE)
-        values = (
-            client.full_name,
-            client.phone,
-            client.email,
-            client.address,
-            client.client_id
-        )
-        
-        cursor.execute(sql_query, values)
-        rows_affected = cursor.rowcount
-        
-        connection.commit()
-        connection.close()
-        
-        return rows_affected > 0
 
+        row = self.session.get(ClientModel, client.client_id)
+        if row is None:
+            return False
+
+        row.full_name = client.full_name
+        row.phone = client.phone
+        row.email = client.email
+        row.address = client.address
+        self.session.commit()
+
+        return True
 
     def delete_client(self, client_id):
         """
-        מוחק לקוח מבסיס הנתונים.
-        מחזיר True אם נמחק, False אם לא נמצא או שיש רשומות מקושרות.
-        
-        אם ללקוח יש תורים או חשבוניות, SQLite יעצור את המחיקה
-        וההסבר יופיע ב-self.last_error
+        מוחק לקוח. מחזיר True אם נמחק, False אם לא נמצא או שיש
+        רשומות מקושרות (תורים/חשבוניות) - FK constraint עדיין
+        אוכף את זה ברמת ה-DB, בדיוק כמו קודם.
         """
         self.last_error = None
-        connection = None
+
+        row = self.session.get(ClientModel, client_id)
+        if row is None:
+            self.last_error = "הלקוח לא נמצא במערכת"
+            return False
 
         try:
-            connection = get_connection()
-            cursor = connection.cursor()
-
-            sql_query = "DELETE FROM clients WHERE client_id = ?"
-            cursor.execute(sql_query, (client_id,))
-
-            rows_affected = cursor.rowcount
-            connection.commit()
-
-            if rows_affected == 0:
-                self.last_error = "הלקוח לא נמצא במערכת"
-                return False
-
+            self.session.delete(row)
+            self.session.commit()
             return True
 
         except Exception as error:
-            if connection is not None:
-                connection.rollback()
-
-            # מקרה נפוץ - יש תורים או חשבוניות מקושרים
+            self.session.rollback()
             if "foreign key" in str(error).lower():
                 self.last_error = (
                     "לא ניתן למחוק את הלקוח - קיימים לו תורים או חשבוניות. "
@@ -208,154 +124,103 @@ class ClientManager:
                 )
             else:
                 self.last_error = translate_db_error(error, "מחיקת לקוח")
-
             return False
 
-        finally:
-            if connection is not None:
-                connection.close()
-
-
     def set_national_id(self, client_id, national_id):
-        """
-        שומר טביעת אצבע של תעודת זהות עבור לקוח.
-
-        המספר עצמו לא נשמר בשום מקום. מה שנכנס למסד
-        הוא תוצאת חישוב חד-כיווני שאי אפשר להפוך בחזרה.
-
-        מחזיר True אם העדכון הצליח.
-        """
+        """שומר טביעת אצבע של תעודת זהות עבור לקוח. ראו utils/security.py."""
         from utils.validators import validate_national_id, normalize_national_id
         from utils.security import hash_national_id
+
+        self.last_error = None
 
         is_valid, error_message = validate_national_id(national_id)
         if not is_valid:
             self.last_error = error_message
             return False
 
-        normalized = normalize_national_id(national_id)
-        stored_hash = hash_national_id(normalized)
-
-        connection = get_connection()
-        cursor = connection.cursor()
-
-        try:
-            cursor.execute(
-                "UPDATE clients SET national_id_hash = ? WHERE client_id = ?",
-                (stored_hash, client_id),
-            )
-            connection.commit()
-
-            if cursor.rowcount == 0:
-                self.last_error = "הלקוח לא נמצא"
-                return False
-
-            return True
-
-        except sqlite3.Error as error:
-            self.last_error = translate_db_error(error, "שמירת תעודת זהות")
+        row = self.session.get(ClientModel, client_id)
+        if row is None:
+            self.last_error = "הלקוח לא נמצא"
             return False
 
-        finally:
-            connection.close()
+        normalized = normalize_national_id(national_id)
+        row.national_id_hash = hash_national_id(normalized)
+        self.session.commit()
+
+        return True
 
     def verify_client_national_id(self, client_id, national_id):
         """
-        בודק האם תעודת הזהות שהוזנה תואמת ללקוח.
-
-        זו הפונקציה היחידה במערכת שמשווה תעודות זהות,
-        והיא מחזירה True או False בלבד. היא לא מדליפה
-        מידע על הסיבה לכישלון ולא על הערך השמור.
-
-        מחזיר False גם כאשר ללקוח אין תעודת זהות שמורה,
-        כדי שלא ייווצר מצב שבו רשומה חסרה מאפשרת מעבר.
+        בודק האם תעודת הזהות שהוזנה תואמת ללקוח. מחזיר True/False בלבד -
+        לא מדליף מידע על הסיבה לכישלון, ולא על הערך השמור.
         """
         from utils.validators import normalize_national_id
         from utils.security import verify_national_id
 
-        connection = get_connection()
-        cursor = connection.cursor()
+        row = self.session.get(ClientModel, client_id)
+        if row is None or row.national_id_hash is None:
+            return False
 
-        try:
-            cursor.execute(
-                "SELECT national_id_hash FROM clients WHERE client_id = ?",
-                (client_id,),
-            )
-            row = cursor.fetchone()
+        normalized = normalize_national_id(national_id)
+        if normalized is None:
+            return False
 
-            if row is None or row[0] is None:
-                return False
-
-            normalized = normalize_national_id(national_id)
-            if normalized is None:
-                return False
-
-            return verify_national_id(normalized, row[0])
-
-        finally:
-            connection.close()
+        return verify_national_id(normalized, row.national_id_hash)
 
     def has_national_id(self, client_id):
+        """בודק האם ללקוח כבר שמורה תעודת זהות."""
+        row = self.session.get(ClientModel, client_id)
+        return row is not None and row.national_id_hash is not None
+
+    def get_client_by_phone(self, phone):
         """
-        בודק האם ללקוח כבר שמורה תעודת זהות.
-        משמש כדי לדעת אם אפשר בכלל לאמת אותו.
+        שולף לקוח לפי טלפון מנורמל. מחזיר None אם לא נמצא או אם
+        הטלפון לא תקין - הקוראת (identity/) אחראית להגיב זהה בשני
+        המקרים, כדי לא לדלוף האם מספר קיים במערכת (סעיף 4 במפרט).
         """
-        connection = get_connection()
-        cursor = connection.cursor()
+        from utils.validators import normalize_phone
 
-        try:
-            cursor.execute(
-                "SELECT national_id_hash FROM clients WHERE client_id = ?",
-                (client_id,),
-            )
-            row = cursor.fetchone()
-            return row is not None and row[0] is not None
+        normalized = normalize_phone(phone)
+        if normalized is None:
+            return None
 
-        finally:
-            connection.close()
-
+        return (
+            self.session.query(ClientModel)
+            .filter(ClientModel.phone == normalized)
+            .first()
+        )
 
     def search_clients_by_name(self, name_query):
         """
-        מחפש לקוחות לפי התאמה חלקית בשם.
-
-        החיפוש מוצא גם שם פרטי בלבד וגם שם משפחה בלבד,
-        כי הוא בודק הופעה בכל מקום במחרוזת השם המלא.
-
-        מחזיר רשימה של אובייקטי Client. רשימה ריקה אם אין התאמה.
+        מחפש לקוחות לפי התאמה חלקית בשם (LIKE, מבוטח מהזרקת SQL
+        כי ה-ORM תמיד מפרמט ערכים - בדיוק כמו סימני השאלה בגרסה
+        הגולמית הקודמת).
         """
         if not name_query or not str(name_query).strip():
             return []
 
-        cleaned_query = str(name_query).strip()
+        pattern = f"%{str(name_query).strip()}%"
 
-        connection = get_connection()
-        cursor = connection.cursor()
+        return (
+            self.session.query(ClientModel)
+            .filter(ClientModel.full_name.like(pattern))
+            .order_by(ClientModel.full_name)
+            .all()
+        )
 
-        try:
-            # הסימן % מציין תווים כלשהם לפני ואחרי הביטוי המבוקש.
-            # הערך מועבר כפרמטר ולא משורשר לתוך השאילתה,
-            # ולכן אין כאן חשיפה להזרקת SQL
-            search_pattern = f"%{cleaned_query}%"
+    def set_health_declaration(self, client_id, file_path):
+        """
+        רושם שהלקוחה חתמה על הצהרת בריאות, ושומר את נתיב הקובץ
+        המקומי (ראו api/clients_api.py - העלאת המסמך עצמה).
+        אין S3, אין DocuSign - קובץ על הדיסק המקומי + נתיב ב-DB בלבד.
+        """
+        row = self.session.get(ClientModel, client_id)
+        if row is None:
+            self.last_error = "הלקוח לא נמצא"
+            return False
 
-            cursor.execute(
-                "SELECT * FROM clients WHERE full_name LIKE ? ORDER BY full_name",
-                (search_pattern,),
-            )
-            rows = cursor.fetchall()
+        row.has_signed_health_declaration = True
+        row.health_declaration_file_path = file_path
+        self.session.commit()
 
-            results = []
-            for row in rows:
-                client = Client(
-                    client_id=row[0],
-                    full_name=row[1],
-                    phone=row[2],
-                    email=row[3],
-                    address=row[4],
-                )
-                results.append(client)
-
-            return results
-
-        finally:
-            connection.close()
+        return True

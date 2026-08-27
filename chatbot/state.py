@@ -30,6 +30,19 @@ STATE_AWAITING_OTP = "awaiting_otp"      # ממתין לקוד אימות
 STATE_VERIFIED = "verified"              # אומת, מותר לחשוף מידע
 STATE_LOCKED = "locked"                  # נחסם עקב ניסיונות כושלים
 
+# מצבי קביעת תור (שלב 4) - זמינים רק אחרי STATE_VERIFIED. שלושתם
+# ממתינים למידע גולמי בלבד; ההחלטה (יש התנגשות? לאשר?) תמיד
+# מתקבלת דטרמיניסטית ב-chatbot/flows.py מול מנוע הזימון של שלב 3,
+# לא ע"י המודל - ראו chatbot/nlu.py
+STATE_BOOKING_TREATMENT = "booking_treatment"  # ממתין לשם טיפול
+STATE_BOOKING_DATETIME = "booking_datetime"    # ממתין לתאריך/שעה רצויים
+STATE_BOOKING_CONFIRM = "booking_confirm"      # ממתין לאישור/דחייה של הצעה קונקרטית
+
+# כל המצבים שנגישים רק אחרי אימות מלא - ראו is_fully_verified()
+POST_VERIFICATION_STATES = {
+    STATE_VERIFIED, STATE_BOOKING_TREATMENT, STATE_BOOKING_DATETIME, STATE_BOOKING_CONFIRM,
+}
+
 
 class ConversationState:
     """מצב שיחה יחידה מול לקוחה אחת."""
@@ -56,6 +69,13 @@ class ConversationState:
         self.id_verified = False
         self.otp_verified = False
 
+        # מצב זמני של קביעת תור מהצ'אט (שלב 4) - נאסף שלב אחר שלב
+        # דרך מצבי ה-BOOKING_*, ומאופס עם reset_booking() בסיום/ביטול
+        self.pending_treatment_id = None
+        self.pending_treatment_name = None
+        self.pending_date = None
+        self.pending_time = None
+
         self.created_at = datetime.now()
         self.last_activity_at = datetime.now()
 
@@ -77,12 +97,14 @@ class ConversationState:
     def is_fully_verified(self):
         """
         התנאי היחיד לחשיפת מידע.
-        שני שלבי האימות חייבים לעבור, והשיחה לא נעולה.
+        שני שלבי האימות חייבים לעבור, והשיחה במצב שמגיע *אחרי*
+        אימות מלא - VERIFIED עצמו, או אחד ממצבי קביעת התור (הם
+        נגישים רק דרך STATE_VERIFIED, ראו handle_verified).
         """
         return (
             self.id_verified
             and self.otp_verified
-            and self.state == STATE_VERIFIED
+            and self.state in POST_VERIFICATION_STATES
         )
 
     def lock(self):
@@ -90,6 +112,17 @@ class ConversationState:
         self.state = STATE_LOCKED
         self.id_verified = False
         self.otp_verified = False
+
+    def reset_booking(self):
+        """
+        מנקה את מצב קביעת התור הזמני. נקרא בסיום קביעה מוצלחת,
+        בביטול ע"י הלקוחה, או בחזרה ל-STATE_VERIFIED מכל סיבה -
+        כדי שפרטים מבקשה שבוטלה לא "ידלפו" לניסיון הבא.
+        """
+        self.pending_treatment_id = None
+        self.pending_treatment_name = None
+        self.pending_date = None
+        self.pending_time = None
 
     def reset_identity(self):
         """

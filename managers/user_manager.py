@@ -2,18 +2,25 @@
 # managers/user_manager.py
 # ניהול משתמשי המערכת: יצירה, אימות, נעילה ואיפוס.
 #
-# עקרונות אבטחה שנאכפים כאן:
+# גרסת ORM (SQLAlchemy) - הפעולות וההתנהגות העסקית זהות
+# ל-100% לגרסה הקודמת (raw SQL), רק שכבת הגישה לנתונים השתנתה.
+# חתימות המתודות נשארו זהות בכוונה, כדי שקוד קורא קיים (API,
+# בדיקות) ימשיך לעבוד בלי שינוי.
+#
+# עקרונות אבטחה שנאכפים כאן (ללא שינוי):
 #   1. סיסמה נשמרת כטביעת אצבע בלבד
 #   2. נעילה זמנית אחרי ניסיונות כושלים
 #   3. הודעת כישלון אחידה, בלי לגלות אם המשתמש קיים
 #   4. השבתה במקום מחיקה
 # ============================================================
 
-import sqlite3
 from datetime import datetime, timedelta
 
-from database import get_connection
-from entities.user import User, VALID_ROLES, ROLE_EMPLOYEE
+from sqlalchemy.exc import IntegrityError
+
+from db import get_session
+from models import User as UserModel
+from entities.user import VALID_ROLES, ROLE_EMPLOYEE
 from utils.passwords import (
     hash_password,
     verify_password,
@@ -31,26 +38,24 @@ LOCKOUT_MINUTES = 15
 
 
 class UserManager:
-    """מנהל את טבלת המשתמשים."""
+    """מנהל את טבלת המשתמשים דרך ה-ORM."""
 
     def __init__(self):
         self.last_error = None
 
-    def _row_to_user(self, row):
-        """ממיר שורה מהמסד לאובייקט משתמש."""
-        if row is None:
-            return None
-        return User(
-            user_id=row[0],
-            phone=row[1],
-            password_hash=row[2],
-            full_name=row[3],
-            role=row[4],
-            is_active=row[5],
-            failed_attempts=row[6],
-            locked_until=row[7],
-            last_login_at=row[8],
-        )
+    @property
+    def session(self):
+        """
+        לא נשמר session בודד ב-__init__ בכוונה: ה-manager נוצר
+        פעם אחת ברמת המודול (למשל user_manager = UserManager()
+        ב-api/auth_api.py), אבל get_session() חייב להיקרא בכל
+        פעולה מחדש - הוא scoped_session לפי thread, ותפיסת מופע
+        יחיד ב-__init__ הייתה "נועלת" את כל הבקשות העתידיות ל-
+        thread שבו ה-manager נוצר (thread הטעינה של האפליקציה).
+        ה-property הזה שקוף לכל שאר הקוד במחלקה - self.session
+        תמיד מחזיר את ה-session הנכון של ה-thread/בקשה הנוכחית.
+        """
+        return get_session()
 
     def create_user(self, phone, password, full_name, role=ROLE_EMPLOYEE):
         """
@@ -58,7 +63,7 @@ class UserManager:
         המזהה הוא מספר הטלפון, כדי שלא יהיה מה לזכור
         וכדי שאיפוס סיסמה יוכל להישלח אליו.
 
-        מחזיר אובייקט משתמש, או None אם היצירה נכשלה.
+        מחזיר אובייקט User (מודל ה-ORM), או None אם היצירה נכשלה.
         """
         self.last_error = None
 
@@ -80,39 +85,28 @@ class UserManager:
             self.last_error = error_message
             return None
 
-        password_hash = hash_password(password)
-        now = datetime.now().isoformat()
-
-        connection = get_connection()
-        cursor = connection.cursor()
+        user = UserModel(
+            phone=normalized_phone,
+            password_hash=hash_password(password),
+            full_name=str(full_name).strip(),
+            role=role,
+            password_changed_at=datetime.now().isoformat(),
+        )
 
         try:
-            cursor.execute(
-                "INSERT INTO users "
-                "(phone, password_hash, full_name, role, password_changed_at) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (normalized_phone, password_hash, str(full_name).strip(), role, now),
-            )
-            connection.commit()
+            self.session.add(user)
+            self.session.commit()
+            return user
 
-            return User(
-                user_id=cursor.lastrowid,
-                phone=normalized_phone,
-                full_name=str(full_name).strip(),
-                role=role,
-                password_hash=password_hash,
-            )
-
-        except sqlite3.IntegrityError:
+        except IntegrityError:
+            self.session.rollback()
             self.last_error = "מספר הטלפון כבר רשום במערכת"
             return None
 
-        except sqlite3.Error as error:
+        except Exception as error:
+            self.session.rollback()
             self.last_error = translate_db_error(error, "יצירת משתמש")
             return None
-
-        finally:
-            connection.close()
 
     def get_user_by_phone(self, phone):
         """מאתר משתמש לפי מספר טלפון, אחרי נרמול."""
@@ -120,53 +114,28 @@ class UserManager:
         if normalized_phone is None:
             return None
 
-        connection = get_connection()
-        cursor = connection.cursor()
-
-        try:
-            cursor.execute(
-                "SELECT user_id, phone, password_hash, full_name, role, "
-                "is_active, failed_attempts, locked_until, last_login_at "
-                "FROM users WHERE phone = ?",
-                (normalized_phone,),
-            )
-            return self._row_to_user(cursor.fetchone())
-
-        finally:
-            connection.close()
+        return (
+            self.session.query(UserModel)
+            .filter_by(phone=normalized_phone)
+            .first()
+        )
 
     def get_user_by_id(self, user_id):
-        """מאתר משתמש לפי מזהה. נחוץ לשחזור session."""
-        connection = get_connection()
-        cursor = connection.cursor()
-
-        try:
-            cursor.execute(
-                "SELECT user_id, phone , password_hash, full_name, role, "
-                "is_active, failed_attempts, locked_until, last_login_at "
-                "FROM users WHERE user_id = ?",
-                (user_id,),
-            )
-            return self._row_to_user(cursor.fetchone())
-
-        finally:
-            connection.close()
+        """מאתר משתמש לפי מזהה. נחוץ לאימות טוקן ה-access בכל בקשה."""
+        return self.session.get(UserModel, user_id)
 
     def get_all_users(self):
         """מחזיר את כל המשתמשים, כולל מושבתים."""
-        connection = get_connection()
-        cursor = connection.cursor()
+        return (
+            self.session.query(UserModel)
+            .order_by(UserModel.role, UserModel.full_name)
+            .all()
+        )
 
-        try:
-            cursor.execute(
-                "SELECT user_id, phone, password_hash, full_name, role, "
-                "is_active, failed_attempts, locked_until, last_login_at "
-                "FROM users ORDER BY role, full_name"
-            )
-            return [self._row_to_user(row) for row in cursor.fetchall()]
-
-        finally:
-            connection.close()
+    def _is_locked(self, user):
+        if not user.locked_until:
+            return False
+        return datetime.now() < datetime.fromisoformat(user.locked_until)
 
     def _record_failed_attempt(self, user):
         """
@@ -174,45 +143,25 @@ class UserManager:
         הנעילה זמנית ומתפוגגת מעצמה, כדי שטעות אנוש
         לא תנעל עובדת מחוץ למערכת לתמיד.
         """
-        new_count = user.failed_attempts + 1
-        locked_until = None
+        user.failed_attempts = (user.failed_attempts or 0) + 1
 
-        if new_count >= MAX_FAILED_ATTEMPTS:
-            locked_until = (datetime.now() + timedelta(minutes=LOCKOUT_MINUTES)).isoformat()
+        if user.failed_attempts >= MAX_FAILED_ATTEMPTS:
+            user.locked_until = (datetime.now() + timedelta(minutes=LOCKOUT_MINUTES)).isoformat()
 
-        connection = get_connection()
-        cursor = connection.cursor()
-
-        try:
-            cursor.execute(
-                "UPDATE users SET failed_attempts = ?, locked_until = ? "
-                "WHERE user_id = ?",
-                (new_count, locked_until, user.user_id),
-            )
-            connection.commit()
-        finally:
-            connection.close()
+        self.session.commit()
 
     def _record_successful_login(self, user):
         """מאפס את מונה הכישלונות ומעדכן את מועד הכניסה."""
-        connection = get_connection()
-        cursor = connection.cursor()
-
-        try:
-            cursor.execute(
-                "UPDATE users SET failed_attempts = 0, locked_until = NULL, "
-                "last_login_at = ? WHERE user_id = ?",
-                (datetime.now().isoformat(), user.user_id),
-            )
-            connection.commit()
-        finally:
-            connection.close()
+        user.failed_attempts = 0
+        user.locked_until = None
+        user.last_login_at = datetime.now().isoformat()
+        self.session.commit()
 
     def authenticate(self, phone, password):
         """
-        מאמת שם משתמש וסיסמה.
+        מאמת מספר טלפון וסיסמה.
 
-        מחזיר אובייקט משתמש בהצלחה, או None בכישלון.
+        מחזיר אובייקט User בהצלחה, או None בכישלון.
         הודעת הכישלון אחידה בכוונה ואינה מלמדת האם שם
         המשתמש קיים. אחרת המערכת מאפשרת למפות משתמשים.
 
@@ -230,7 +179,7 @@ class UserManager:
             self.last_error = "מספר טלפון או סיסמה שגויים"
             return None, "inactive"
 
-        if user.is_locked():
+        if self._is_locked(user):
             self.last_error = (
                 f"החשבון נעול זמנית עקב ניסיונות כושלים. "
                 f"יש לנסות שוב בעוד {LOCKOUT_MINUTES} דקות"
@@ -249,6 +198,10 @@ class UserManager:
         """
         מגדיר סיסמה חדשה למשתמש.
         משמש גם ליצירה וגם לאיפוס על ידי מנהל.
+
+        מעלה גם את token_version, כדי שכל refresh token שהונפק
+        לפני שינוי הסיסמה יפסיק לעבוד מיידית - אחרת מישהי שגנבה
+        טוקן ישן יכולה להמשיך להשתמש בו אחרי שהבעלים כבר החליפה סיסמה.
         """
         self.last_error = None
 
@@ -257,51 +210,41 @@ class UserManager:
             self.last_error = error_message
             return False
 
-        connection = get_connection()
-        cursor = connection.cursor()
+        user = self.get_user_by_id(user_id)
+        if user is None:
+            self.last_error = "המשתמש לא נמצא"
+            return False
 
-        try:
-            cursor.execute(
-                "UPDATE users SET password_hash = ?, password_changed_at = ?, "
-                "failed_attempts = 0, locked_until = NULL WHERE user_id = ?",
-                (hash_password(new_password), datetime.now().isoformat(), user_id),
-            )
-            connection.commit()
+        user.password_hash = hash_password(new_password)
+        user.password_changed_at = datetime.now().isoformat()
+        user.failed_attempts = 0
+        user.locked_until = None
+        user.token_version = (user.token_version or 0) + 1
+        self.session.commit()
 
-            if cursor.rowcount == 0:
-                self.last_error = "המשתמש לא נמצא"
-                return False
-
-            return True
-
-        finally:
-            connection.close()
+        return True
 
     def set_active(self, user_id, is_active):
         """
         מפעיל או משבית משתמש.
         השבתה מחליפה מחיקה, כדי שרשומות היומן יישארו מקושרות.
+
+        השבתה גם מעלה token_version, כדי שרענון טוקן קיים לא
+        ימשיך לעבוד אחרי שהעובדת כבר לא פעילה.
         """
         self.last_error = None
 
-        connection = get_connection()
-        cursor = connection.cursor()
+        user = self.get_user_by_id(user_id)
+        if user is None:
+            self.last_error = "המשתמש לא נמצא"
+            return False
 
-        try:
-            cursor.execute(
-                "UPDATE users SET is_active = ? WHERE user_id = ?",
-                (1 if is_active else 0, user_id),
-            )
-            connection.commit()
+        user.is_active = 1 if is_active else 0
+        if not is_active:
+            user.token_version = (user.token_version or 0) + 1
+        self.session.commit()
 
-            if cursor.rowcount == 0:
-                self.last_error = "המשתמש לא נמצא"
-                return False
-
-            return True
-
-        finally:
-            connection.close()
+        return True
 
     def count_active_admins(self):
         """
@@ -309,14 +252,8 @@ class UserManager:
         משמש כדי למנוע מצב שבו המנהל האחרון משבית את עצמו
         ואיש אינו יכול עוד לנהל את המערכת.
         """
-        connection = get_connection()
-        cursor = connection.cursor()
-
-        try:
-            cursor.execute(
-                "SELECT COUNT(*) FROM users WHERE role = 'admin' AND is_active = 1"
-            )
-            return cursor.fetchone()[0]
-
-        finally:
-            connection.close()
+        return (
+            self.session.query(UserModel)
+            .filter_by(role="admin", is_active=1)
+            .count()
+        )

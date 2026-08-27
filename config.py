@@ -51,9 +51,19 @@ class Config:
     # ---------- מסד נתונים ----------
     DATABASE_PATH = os.getenv("DATABASE_PATH", str(BASE_DIR / "data" / "clinic.db"))
 
-    # ---------- מנוע הבנת השפה ----------
+    # ---------- מנוע הבנת השפה (NLU) ----------
+    # ספק ה-LLM לחילוץ מידע מהודעות חופשיות. gemini/openai/none -
+    # אותו רעיון בדיוק כמו NOTIFICATION_PROVIDER למטה: ספק אחד פעיל,
+    # ובלי מפתח מוגדר (או none) המערכת נופלת אוטומטית למסלול regex
+    # דטרמיניסטי (ראו chatbot/nlu.py) - אף פעם לא "נתקעת" בלי מודל
+    NLU_PROVIDER = os.getenv("NLU_PROVIDER", "gemini")
+
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
     GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.7-flash")
+
+    # מוכן לחיבור מפתח OpenAI בעתיד, בלי לשנות קוד - ראו chatbot/nlu.py
+    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+    OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
     # כתובת ה-API הפנימי שהצ'אטבוט פונה אליה
     INTERNAL_API_BASE_URL = os.getenv("INTERNAL_API_BASE_URL", "http://127.0.0.1:8000")

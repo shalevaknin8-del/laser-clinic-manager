@@ -15,6 +15,7 @@
 from flask import Flask, render_template
 
 from database import initialize_database
+from db import init_orm_tables, remove_session
 from managers.treatment_manager import TreatmentManager
 from managers.appointment_treatment_manager import AppointmentTreatmentManager
 
@@ -28,6 +29,11 @@ from api.verification_api import verification_bp
 from api.auth_api import auth_bp
 from api.users_api import users_bp
 from api.chat_api import chat_bp
+from api.rooms_api import rooms_bp
+from api.machines_api import machines_bp
+from api.staff_schedule_api import staff_schedule_bp
+from api.packages_api import packages_bp
+from api.portal_api import portal_bp
 from security_setup import apply_security
 
 
@@ -61,6 +67,11 @@ app.register_blueprint(verification_bp)
 app.register_blueprint(auth_bp)
 app.register_blueprint(users_bp)
 app.register_blueprint(chat_bp)
+app.register_blueprint(rooms_bp)
+app.register_blueprint(machines_bp)
+app.register_blueprint(staff_schedule_bp)
+app.register_blueprint(packages_bp)
+app.register_blueprint(portal_bp)
 
 # הקשחת אבטחה. חייב לרוץ אחרי רישום כל ה-Blueprints,
 # כדי שהמגבלות יחולו על ה-routes שכבר קיימים
@@ -68,38 +79,30 @@ limiter = apply_security(app)
 
 
 # ============================================================
-# עמוד הבית
+# עמוד ניהול הצוות - גרסת JWT.
+#
+# בשונה מהגרסה הקודמת (session cookie), השרת לא יכול לדעת מתוך
+# בקשת GET רגילה אם המשתמשת מחוברת - אין כותרת Authorization על
+# טעינת עמוד HTML. לכן שני ה-routes תמיד מגישים את אותו קובץ,
+# וה-JS בצד הלקוח (static/app.js) הוא זה שבודק אם יש טוקן ב-
+# localStorage ומפנה בהתאם (index.html -> /login אם אין טוקן,
+# login.html -> / אם כבר יש). זו הדרך הרגילה לעשות את זה ב-SPA
+# מגובה טוקן, ואין בה שום דליפת מידע - שני העמודים סטטיים
+# לגמרי, וההרשאה עצמה עדיין נאכפת אך ורק בשרת בכל קריאת API.
 # ============================================================
 
 @app.route("/")
 def index():
-    """
-    מגיש את ממשק הניהול.
-    מי שאינו מחובר מופנה למסך ההתחברות.
-    """
-    from auth.decorators import get_current_user
-    from flask import redirect
-
-    if get_current_user() is None:
-        return redirect("/login")
-
+    """מגיש את מעטפת ממשק הניהול (SPA). הבדיקה אם מחוברים מתבצעת ב-JS."""
     return render_template("index.html")
 
 
 @app.route("/login")
 def login_page():
-    
-    """
-    מגיש את מסך ההתחברות.
-    מי שכבר מחובר מופנה ישירות לממשק.
-    """
-    from auth.decorators import get_current_user
-    from flask import redirect
-
-    if get_current_user() is not None:
-        return redirect("/")
-
+    """מגיש את מסך הכניסה. אם כבר יש טוקן שמור, ה-JS מפנה ל-/."""
     return render_template("login.html")
+
+
 @app.route("/chat")
 def chat_page():
     """
@@ -119,6 +122,17 @@ def add_no_cache_headers(response):
     return response
 
 
+@app.teardown_appcontext
+def shutdown_orm_session(exception=None):
+    """
+    סוגר את ה-SQLAlchemy session בסוף כל בקשה - אותו עיקרון בדיוק
+    כמו סגירת חיבור SQLite גולמי ב-finally בכל מנהל. בלי זה,
+    ה-session נשאר תפוס ל-thread הזה ועלול להחזיר מידע מיושן
+    (stale) בבקשה הבאה שתטופל באותו thread.
+    """
+    remove_session(exception)
+
+
 # ============================================================
 # הרצה
 # ============================================================
@@ -129,6 +143,12 @@ if __name__ == "__main__":
 
     # יצירת טבלת הקישור לטיפול מרוכב, בטוח להרצה חוזרת
     AppointmentTreatmentManager().ensure_table()
+
+    # טבלאות ה-ORM החדשות (rooms/machines/packages/...) - ראו db.py.
+    # migrations/004_orm_refactor.py הוא הדרך הרשמית להרצה חד-פעמית
+    # (כולל עמודות חדשות בטבלאות קיימות); הקריאה כאן היא רשת ביטחון
+    # בלבד להרצה מקומית ראשונה, בדיוק כמו initialize_database() למעלה
+    init_orm_tables()
 
     # ללא קטלוג טיפולים אי אפשר לקבוע תורים
     treatment_manager = TreatmentManager()

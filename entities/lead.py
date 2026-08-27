@@ -18,9 +18,14 @@ class Lead:
     """
 
     def __init__(self, full_name, phone, source=None, status="new",
-                 notes=None, lead_id=None):
+                 notes=None, lead_id=None, created_at=None):
         # מזהה ייחודי - יתקבל מ-DB אחרי הוספה
         self.lead_id = lead_id
+
+        # מועד יצירת הליד - נחוץ למגמות בלוח הבקרה (לידים חדשים החודש
+        # מול החודש הקודם). אופציונלי כדי לא לשבור קוד קורא קיים
+        # שבונה Lead בלי הפרמטר הזה (למשל create_lead לפני ההוספה)
+        self.created_at = created_at
         
         # שם מלא של הליד (שדה חובה)
         self.full_name = full_name

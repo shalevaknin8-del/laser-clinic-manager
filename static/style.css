@@ -1,977 +1,298 @@
 /* ============================================================
    static/style.css
-   עיצוב מלא למערכת ניהול קליניקת הלייזר.
-
-   שלב זה (3) עוסק רק במבנה ועיצוב - אין כאן שום JS, רק CSS
-   טהור שמגדיר איך הדברים ייראו. כל ה-class וה-data-* attribute
-   שמופיעים כאן תואמים בדיוק למה שכתוב ב-templates/index.html.
-
-   מבנה הקובץ (לפי סדר):
-   1. משתני עיצוב (CSS Variables) - צבעים, מרווחים, פינות
-   2. איפוס בסיסי + טיפוגרפיה
-   3. שלד האפליקציה (sidebar + main)
-   4. ניווט צדדי
-   5. מסכים (screens) - הצגה/הסתרה
-   6. כרטיסים וגריד סטטיסטיקות (דשבורד)
-   7. טולבר (שורת כפתורים מעל טבלאות)
-   8. טבלאות נתונים
-   9. מצב ריק (empty state)
-   10. ספינר טעינה
-   11. כפתורים
-   12. טפסים + הודעות שגיאה
-   13. מודלים (חלונות קופצים)
-   14. דיאלוג אישור
-   15. תגי סטטוס (badges)
-   16. הודעות toast
-   17. רספונסיביות - טאבלט ומסכים קטנים
+   שפת העיצוב מבוססת על desing/Clinic Suite.dc.html (זהב-שמנת,
+   RTL, כרטיסים לבנים על רקע קרם). ראו DESIGN_NOTES.md לרשימת
+   המסכים שנוספו כאן ולא היו בעיצוב המקורי של המעצב/ת.
    ============================================================ */
 
-
-/* ============================================================
-   1. משתני עיצוב - צבע אחיד לכל האתר, נוח לשינוי במקום אחד
-   פלטה: גוון רוז/סגול עדין שמתאים לקליניקת יופי,
-   על רקע בהיר ונקי, עם ניווט כהה ואלגנטי בצד
-   ============================================================ */
 :root {
-    /* צבעי מותג */
-    --color-primary: #b8698a;
-    --color-primary-dark: #96506d;
-    --color-primary-light: #f5e5ec;
+    --bg: #FAF9F6;
+    --ink: #2C2C2C;
+    --ink-soft: #3D3B37;
+    --muted: #6E6A63;
+    --muted-2: #8A8781;
+    --muted-3: #A9A59C;
+    --muted-4: #B4B0A8;
+    --border: rgba(44, 44, 44, 0.06);
+    --border-soft: rgba(44, 44, 44, 0.045);
+    --hover: rgba(44, 44, 44, 0.035);
 
-    /* רקעים ומשטחים */
-    --color-bg: #faf7f6;
-    --color-surface: #ffffff;
-    --color-sidebar: #2c2333;
-    --color-sidebar-hover: #3b2f45;
+    --gold: #B99A64;
+    --gold-bar: #C9AC79;
+    --gold-ink: #A8874F;
+    --gold-bg: #F5F0E6;
+    --gold-bg-2: #F3EDE1;
 
-    /* טקסט */
-    --color-text: #2c2530;
-    --color-text-muted: #7d7480;
-    --color-text-on-dark: #f3edf5;
-    --color-text-on-dark-muted: #b3a7bb;
+    --pink-bg: #F8EFF1; --pink-dot: #C48B9F; --pink-ink: #A9788A;
+    --sage-bg: #EFF3EE; --sage-dot: #7E9A85; --sage-ink: #6F8A76;
+    --blue-bg: #EDF1F6; --blue-dot: #7D93AD; --blue-ink: #6C8399;
 
-    /* גבולות */
-    --color-border: #e9e1e4;
+    --danger: #B4485A;
+    --danger-bg: #F8ECEE;
 
-    /* צבעי מצב */
-    --color-success: #3fa373;
-    --color-success-bg: #e5f5ee;
-    --color-danger: #d1554f;
-    --color-danger-bg: #fbe9e8;
-    --color-warning: #d99a3b;
-    --color-warning-bg: #faf0dd;
-    --color-info: #4c7ea8;
-    --color-info-bg: #e7f0f7;
+    --radius-lg: 18px;
+    --radius-md: 14px;
+    --radius-sm: 11px;
+    --radius-xs: 9px;
 
-    /* מרווחים */
-    --space-1: 4px;
-    --space-2: 8px;
-    --space-3: 12px;
-    --space-4: 16px;
-    --space-5: 24px;
-    --space-6: 32px;
+    --shadow-card: 0 1px 2px rgba(44,44,44,0.03), 0 14px 34px rgba(44,44,44,0.055);
+    --shadow-pop: 0 2px 6px rgba(44,44,44,0.05), 0 18px 44px rgba(44,44,44,0.14);
 
-    /* פינות עגולות */
-    --radius-sm: 6px;
-    --radius-md: 10px;
-    --radius-lg: 16px;
-
-    /* צללים */
-    --shadow-sm: 0 1px 3px rgba(44, 35, 51, 0.08);
-    --shadow-md: 0 6px 20px rgba(44, 35, 51, 0.12);
-    --shadow-lg: 0 12px 40px rgba(44, 35, 51, 0.22);
-
-    /* רוחב הניווט הצדדי */
-    --sidebar-width: 240px;
+    --font-body: 'Assistant', 'Segoe UI', sans-serif;
+    --font-num: 'Plus Jakarta Sans', sans-serif;
 }
 
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; background: var(--bg); }
+body { -webkit-font-smoothing: antialiased; font-family: var(--font-body); color: var(--ink); }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: rgba(44,44,44,0.12); border-radius: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+a { color: var(--gold-ink); text-decoration: none; }
+a:hover { color: var(--ink-soft); }
+button { font-family: inherit; }
 
-/* ============================================================
-   2. איפוס בסיסי + טיפוגרפיה
-   בלי CDN לפונטים - נסמכים על גופני המערכת שתומכים בעברית
-   ============================================================ */
-* {
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
-}
+.num { font-family: var(--font-num); }
+.ltr { direction: ltr; unicode-bidi: isolate; }
 
-html, body {
-    height: 100%;
-}
+/* ---------- layout ---------- */
+.app-shell { display: flex; min-height: 100vh; }
 
-body {
-    font-family: "Segoe UI", "Arial Hebrew", "Assistant", -apple-system,
-                 BlinkMacSystemFont, Arial, sans-serif;
-    background-color: var(--color-bg);
-    color: var(--color-text);
-    line-height: 1.5;
-    font-size: 15px;
-}
-
-h1 {
-    font-size: 26px;
-    font-weight: 700;
-}
-
-h2 {
-    font-size: 18px;
-    font-weight: 600;
-}
-
-h3 {
-    font-size: 15px;
-    font-weight: 600;
-    color: var(--color-text-muted);
-    margin-bottom: var(--space-3);
-}
-
-button {
-    font-family: inherit;
-    cursor: pointer;
-}
-
-input, select, textarea {
-    font-family: inherit;
-    font-size: inherit;
-}
-
-ul {
-    list-style: none;
-}
-
-
-/* ============================================================
-   3. שלד האפליקציה - ניווט צדדי קבוע + אזור תוכן
-   ============================================================ */
-.app-shell {
-    display: flex;
-    min-height: 100vh;
-}
-
-.main-content {
-    flex: 1;
-    padding: var(--space-6);
-    max-width: 1200px;
-    margin: 0 auto;
-    width: 100%;
-}
-
-
-/* ============================================================
-   4. ניווט צדדי
-   ============================================================ */
 .sidebar {
-    width: var(--sidebar-width);
-    flex-shrink: 0;
-    background-color: var(--color-sidebar);
-    color: var(--color-text-on-dark);
-    padding: var(--space-5) var(--space-3);
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-5);
+    flex: 0 0 auto; width: 248px; padding: 26px 14px 22px;
+    display: flex; flex-direction: column; gap: 26px;
+    position: sticky; top: 0; height: 100vh; overflow: hidden;
+    transition: width .28s cubic-bezier(.4,0,.2,1);
 }
-
-.sidebar-brand {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    padding: 0 var(--space-2);
+.sidebar.collapsed { width: 78px; }
+.sidebar.collapsed .brand-name, .sidebar.collapsed .brand-sub,
+.sidebar.collapsed .nav-item-label, .sidebar.collapsed .sidebar-user-name,
+.sidebar.collapsed .sidebar-user-role, .sidebar.collapsed .sidebar-logout {
+    opacity: 0; width: 0; overflow: hidden; pointer-events: none;
 }
+.sidebar.collapsed .nav-item { justify-content: center; }
+.sidebar.collapsed .brand { justify-content: center; }
+.sidebar.collapsed .sidebar-user { justify-content: center; }
+.sidebar.collapsed .collapse-toggle svg { transform: rotate(180deg); }
 
-.sidebar-brand-icon {
-    font-size: 28px;
+.brand { display: flex; align-items: center; gap: 11px; padding: 0 8px; }
+.brand-mark {
+    width: 30px; height: 30px; border-radius: 9px; flex: 0 0 auto;
+    background: linear-gradient(150deg, var(--gold-bar), var(--gold-ink));
+    display: flex; align-items: center; justify-content: center;
 }
+.brand-mark span { width: 9px; height: 9px; border: 1.5px solid rgba(255,255,255,0.9); border-radius: 50%; }
+.brand-name { font-size: 14.5px; font-weight: 600; letter-spacing: -0.2px; white-space: nowrap; transition: opacity .2s; }
+.brand-sub { font-size: 11px; color: var(--muted-3); white-space: nowrap; margin-top: 1px; transition: opacity .2s; }
 
-.sidebar-brand-text {
-    display: flex;
-    flex-direction: column;
-    line-height: 1.3;
-}
-
-.sidebar-brand-text strong {
-    font-size: 15px;
-    color: var(--color-text-on-dark);
-}
-
-.sidebar-brand-text span {
-    font-size: 12px;
-    color: var(--color-text-on-dark-muted);
-}
-
-.sidebar-nav {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-}
-
+.nav { display: flex; flex-direction: column; gap: 3px; }
 .nav-item {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    width: 100%;
-    padding: var(--space-3) var(--space-3);
-    background: transparent;
-    border: none;
-    border-radius: var(--radius-md);
-    color: var(--color-text-on-dark-muted);
-    font-size: 14px;
-    font-weight: 500;
-    text-align: right;
-    transition: background-color 0.15s ease, color 0.15s ease;
+    position: relative; display: flex; align-items: center; gap: 12px; padding: 9px 10px;
+    border-radius: var(--radius-xs); cursor: pointer; font-size: 14px; color: var(--muted);
 }
-
-.nav-item:hover {
-    background-color: var(--color-sidebar-hover);
-    color: var(--color-text-on-dark);
+.nav-item-icon { flex: 0 0 auto; display: flex; }
+.nav-item-icon svg path, .nav-item-icon svg rect, .nav-item-icon svg circle { transition: stroke .15s; }
+.nav-item-label { white-space: nowrap; transition: opacity .2s; }
+.nav-item:hover { background: var(--hover); }
+.nav-item.active { background: var(--gold-bg); color: var(--ink); font-weight: 600; }
+.nav-item.active::before {
+    content: ""; position: absolute; inset-inline-start: -14px; top: 50%; transform: translateY(-50%);
+    width: 2px; height: 20px; border-radius: 2px; background: var(--gold-bar);
 }
+.nav-sep { height: 1px; background: var(--border); margin: 10px 10px; }
 
-.nav-item.is-active {
-    background-color: var(--color-primary);
-    color: #ffffff;
+.sidebar-footer { margin-top: auto; display: flex; flex-direction: column; gap: 10px; }
+.collapse-toggle {
+    display: flex; align-items: center; justify-content: center; width: 30px; height: 30px;
+    border-radius: var(--radius-xs); cursor: pointer; color: var(--muted-3); align-self: flex-end;
 }
+.collapse-toggle:hover { background: var(--hover); color: var(--ink); }
+.collapse-toggle svg { transition: transform .28s cubic-bezier(.4,0,.2,1); }
+.sidebar.collapsed .collapse-toggle { align-self: center; }
 
-.nav-icon {
-    font-size: 17px;
-    width: 20px;
-    text-align: center;
+.sidebar-user {
+    display: flex; align-items: center; gap: 11px; padding: 10px;
+    border-radius: 12px; background: #fff; box-shadow: var(--shadow-card);
 }
-
-
-/* ============================================================
-   5. מסכים - רק המסך עם is-active מוצג
-   ============================================================ */
-.screen {
-    display: none;
+.avatar {
+    flex: 0 0 auto; width: 30px; height: 30px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 600; background: var(--gold-bg-2); color: var(--gold-ink);
 }
+.avatar.lg { width: 60px; height: 60px; font-size: 18px; }
+.sidebar-user-name { font-size: 13px; font-weight: 600; }
+.sidebar-user-role { font-size: 11px; color: var(--muted-3); }
+.sidebar-logout { margin-inline-start: auto; cursor: pointer; color: var(--muted-3); font-size: 12px; }
+.sidebar-logout:hover { color: var(--danger); }
 
-.screen.is-active {
-    display: block;
-    animation: screen-fade-in 0.2s ease;
+.main { flex: 1 1 auto; min-width: 0; }
+.topbar {
+    display: flex; align-items: center; gap: 20px; padding: 24px 34px 18px;
 }
+.crumb { font-size: 12px; color: var(--muted-3); letter-spacing: 0.4px; }
+.page-title { margin: 3px 0 0; font-size: 25px; font-weight: 600; letter-spacing: -0.5px; }
+.page-body { padding: 6px 34px 48px; }
 
-@keyframes screen-fade-in {
-    from { opacity: 0; transform: translateY(4px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-
-.screen-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-end;
-    margin-bottom: var(--space-5);
-}
-
-.screen-subtitle {
-    color: var(--color-text-muted);
-    font-size: 14px;
-    margin-top: var(--space-1);
-}
-
-
-/* ============================================================
-   6. כרטיסים + גריד סטטיסטיקות (דשבורד)
-   ============================================================ */
-.card {
-    background-color: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-sm);
-    margin-bottom: var(--space-5);
-}
-
-.card-header {
-    padding: var(--space-4) var(--space-5);
-    border-bottom: 1px solid var(--color-border);
-}
-
-.card-body {
-    padding: var(--space-5);
-}
-
-.stats-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: var(--space-4);
-    margin-bottom: var(--space-5);
-}
-
-.stat-card {
-    background-color: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-sm);
-    padding: var(--space-5);
-    display: flex;
-    align-items: center;
-    gap: var(--space-4);
-}
-
-.stat-icon {
-    width: 48px;
-    height: 48px;
-    border-radius: var(--radius-md);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 22px;
-    flex-shrink: 0;
-    background-color: var(--color-primary-light);
-}
-
-.stat-icon-clients { background-color: var(--color-info-bg); }
-.stat-icon-revenue { background-color: var(--color-success-bg); }
-.stat-icon-leads { background-color: var(--color-warning-bg); }
-
-.stat-body {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-}
-
-.stat-value {
-    font-size: 24px;
-    font-weight: 700;
-}
-
-.stat-label {
-    font-size: 13px;
-    color: var(--color-text-muted);
-}
-
-
-/* ============================================================
-   7. טולבר - שורת כפתורים מעל טבלאות
-   ============================================================ */
-.toolbar {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    margin-bottom: var(--space-4);
-    flex-wrap: wrap;
-}
-
-.toolbar-spacer {
-    flex: 1;
-}
-
-.toolbar-search {
-    max-width: 260px;
-}
-
-.toolbar-checkbox {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    font-size: 14px;
-    color: var(--color-text-muted);
-}
-
-
-/* ============================================================
-   8. טבלאות נתונים
-   ============================================================ */
-.table-wrap {
-    overflow-x: auto;
-}
-
-.data-table {
-    width: 100%;
-    border-collapse: collapse;
-}
-
-.data-table th {
-    text-align: right;
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--color-text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-    padding: var(--space-3) var(--space-3);
-    border-bottom: 2px solid var(--color-border);
-    white-space: nowrap;
-}
-
-.data-table td {
-    padding: var(--space-3) var(--space-3);
-    border-bottom: 1px solid var(--color-border);
-    font-size: 14px;
-    white-space: nowrap;
-}
-
-.data-table tbody tr:hover {
-    background-color: var(--color-primary-light);
-}
-
-.data-table tbody tr:last-child td {
-    border-bottom: none;
-}
-
-.data-table tfoot td {
-    padding: var(--space-3);
-    border-top: 2px solid var(--color-border);
-    border-bottom: none;
-}
-
-.table-footer-label {
-    font-weight: 600;
-    color: var(--color-text-muted);
-}
-
-.table-footer-value {
-    font-weight: 700;
-    font-size: 16px;
-}
-
-.table-actions {
-    display: flex;
-    gap: var(--space-2);
-}
-
-.btn-icon {
-    width: 30px;
-    height: 30px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border: 1px solid var(--color-border);
-    background-color: var(--color-surface);
-    border-radius: var(--radius-sm);
-    font-size: 14px;
-    transition: background-color 0.15s ease, border-color 0.15s ease;
-}
-
-.btn-icon:hover {
-    background-color: var(--color-primary-light);
-    border-color: var(--color-primary);
-}
-
-.btn-icon-danger:hover {
-    background-color: var(--color-danger-bg);
-    border-color: var(--color-danger);
-}
-
-
-/* ============================================================
-   9. מצב ריק - מוצג במקום טבלה ריקה כשאין נתונים
-   ============================================================ */
-.empty-state {
-    text-align: center;
-    padding: var(--space-6) var(--space-4);
-    color: var(--color-text-muted);
-}
-
-.empty-state-icon {
-    font-size: 40px;
-    margin-bottom: var(--space-3);
-}
-
-.empty-state-title {
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--color-text);
-    margin-bottom: var(--space-1);
-}
-
-.empty-state-text {
-    font-size: 13px;
-}
-
-.empty-state-small {
-    padding: var(--space-4);
-}
-
-.empty-state-small p {
-    font-size: 13px;
-}
-
-
-/* ============================================================
-   10. ספינר טעינה - מוצג בזמן קריאה ל-API, לא מסך קפוא
-   ============================================================ */
-.loading-spinner {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: var(--space-3);
-    padding: var(--space-5);
-    color: var(--color-text-muted);
-    font-size: 14px;
-}
-
-.spinner {
-    width: 20px;
-    height: 20px;
-    border: 3px solid var(--color-primary-light);
-    border-top-color: var(--color-primary);
-    border-radius: 50%;
-    animation: spin 0.7s linear infinite;
-}
-
-@keyframes spin {
-    to { transform: rotate(360deg); }
-}
-
-/* מיכל טעינה במצב "טוען" מסתיר את הטבלה מתחתיו */
-.loading-spinner[hidden] {
-    display: none;
-}
-
-
-/* ============================================================
-   11. כפתורים
-   ============================================================ */
 .btn {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-3) var(--space-4);
-    border-radius: var(--radius-md);
-    border: 1px solid transparent;
-    font-size: 14px;
-    font-weight: 600;
-    transition: background-color 0.15s ease, border-color 0.15s ease,
-                box-shadow 0.15s ease;
+    display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 16px;
+    border-radius: var(--radius-sm); font-size: 13.5px; font-weight: 500; cursor: pointer;
+    border: none; white-space: nowrap;
 }
+.btn-primary { background: var(--ink); color: #fff; }
+.btn-primary:hover { background: var(--ink-soft); }
+.btn-secondary { background: #fff; color: var(--ink); box-shadow: var(--shadow-card); }
+.btn-secondary:hover { background: var(--gold-bg); }
+.btn-ghost { background: transparent; color: var(--muted); }
+.btn-ghost:hover { background: var(--hover); }
+.btn-danger { background: var(--danger-bg); color: var(--danger); }
+.btn-danger:hover { background: #F2DEE1; }
+.btn-sm { height: 32px; padding: 0 12px; font-size: 12.5px; }
+.btn[disabled] { opacity: .5; cursor: not-allowed; }
 
-.btn-primary {
-    background-color: var(--color-primary);
-    color: #ffffff;
-}
+/* ---------- cards / tables ---------- */
+.card { background: #fff; border-radius: var(--radius-lg); box-shadow: var(--shadow-card); padding: 22px 24px; }
+.card-title { margin: 0 0 16px; font-size: 16px; font-weight: 600; letter-spacing: -0.3px; }
 
-.btn-primary:hover {
-    background-color: var(--color-primary-dark);
-}
+.grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 18px; }
+.grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 18px; }
+.stack { display: flex; flex-direction: column; gap: 18px; }
 
-.btn-ghost {
-    background-color: transparent;
-    border-color: var(--color-border);
-    color: var(--color-text);
-}
+.stat-card { position: relative; overflow: hidden; }
+.stat-value { font-family: var(--font-num); font-size: 32px; font-weight: 500; letter-spacing: -1.2px; position: relative; z-index: 1; }
+.stat-label { display: flex; align-items: center; gap: 9px; color: var(--muted-2); font-size: 13px; position: relative; z-index: 1; }
+.stat-sub { margin-top: 7px; font-size: 12.5px; color: var(--muted-3); position: relative; z-index: 1; }
+.stat-sparkline { position: absolute; inset-inline: 0; bottom: 0; height: 44px; opacity: .55; pointer-events: none; }
 
-.btn-ghost:hover {
-    background-color: var(--color-bg);
-}
+table { width: 100%; border-collapse: collapse; }
+th { text-align: start; font-size: 12px; color: var(--muted-3); font-weight: 500; padding: 10px 12px; }
+td { padding: 13px 12px; font-size: 13.5px; border-top: 1px solid var(--border-soft); }
+tr.clickable { cursor: pointer; }
+tr.clickable:hover td { background: var(--bg); }
 
-.btn-danger {
-    background-color: var(--color-danger);
-    color: #ffffff;
-}
-
-.btn-danger:hover {
-    background-color: #b3433d;
-}
-
-.btn:focus-visible {
-    outline: 2px solid var(--color-primary);
-    outline-offset: 2px;
-}
-
-
-/* ============================================================
-   12. טפסים + הודעות שגיאה
-   כל שדה עטוף ב-.form-group, עם .form-error מתחתיו שמתמלא
-   ע"י JS בשלב 4 כשהקלט לא תקין
-   ============================================================ */
-.form-group {
-    margin-bottom: var(--space-4);
-}
-
-.form-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: var(--space-4);
-}
-
-.form-label {
-    display: block;
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--color-text-muted);
-    margin-bottom: var(--space-2);
-}
-
-.form-input {
-    width: 100%;
-    padding: var(--space-3);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    background-color: var(--color-surface);
-    color: var(--color-text);
-    transition: border-color 0.15s ease, box-shadow 0.15s ease;
-}
-
-.form-input:focus {
-    outline: none;
-    border-color: var(--color-primary);
-    box-shadow: 0 0 0 3px var(--color-primary-light);
-}
-
-/* מצב שגיאה על שדה - מחלקה שתתווסף/תוסר ע"י JS בשלב 4 */
-.form-input.has-error {
-    border-color: var(--color-danger);
-}
-
-.form-input.has-error:focus {
-    box-shadow: 0 0 0 3px var(--color-danger-bg);
-}
-
-textarea.form-input {
-    resize: vertical;
-    min-height: 60px;
-}
-
-.form-hint {
-    display: block;
-    font-size: 12px;
-    color: var(--color-text-muted);
-    margin-top: var(--space-1);
-}
-
-.form-error {
-    display: block;
-    font-size: 12px;
-    color: var(--color-danger);
-    margin-top: var(--space-1);
-    min-height: 16px;
-}
-
-.form-alert {
-    background-color: var(--color-danger-bg);
-    color: var(--color-danger);
-    border-radius: var(--radius-md);
-    padding: var(--space-3);
-    font-size: 13px;
-    margin-top: var(--space-2);
-}
-
-.available-slots-hint {
-    background-color: var(--color-info-bg);
-    color: var(--color-info);
-    border-radius: var(--radius-md);
-    padding: var(--space-3);
-    font-size: 13px;
-    margin-bottom: var(--space-4);
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--space-2);
-}
-
-/* כפתור שעה פנויה בודדת (בתוך available-slots-hint) - JS ממלא אותם
-   דינמית, לחיצה עליו ממלאת את שדה השעה בטופס */
-.slot-chip {
-    background-color: var(--color-surface);
-    border: 1px solid var(--color-info);
-    color: var(--color-info);
-    border-radius: 999px;
-    padding: 2px var(--space-2);
-    font-size: 12px;
-    font-weight: 600;
-}
-
-.slot-chip:hover {
-    background-color: var(--color-info);
-    color: #ffffff;
-}
-
-/* טקסט הסבר קצר בתוך label - "(ניתן לבחור כמה טיפולים...)" */
-.form-hint-inline {
-    font-weight: 400;
-    color: var(--color-text-muted);
-    text-transform: none;
-    letter-spacing: normal;
-    font-size: 12px;
-}
-
-/* רשימת checkbox-ים לבחירת טיפול מרוכב - קופסה גוללת עם גבול,
-   כדי שקטלוג ארוך לא ישבור את גובה המודל */
-.treatment-checklist {
-    max-height: 220px;
-    overflow-y: auto;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    padding: var(--space-2);
-}
-
-/* אותה מחלקת שגיאה כמו .form-input.has-error - JS מוסיף אותה
-   כשלא נבחר אף טיפול (setFieldError('appt-treatment', ...)) */
-.treatment-checklist.has-error {
-    border-color: var(--color-danger);
-}
-
-.treatment-checklist-item {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-2);
-    border-radius: var(--radius-sm);
-    font-size: 13px;
-    cursor: pointer;
-}
-
-.treatment-checklist-item:hover {
-    background-color: var(--color-primary-light);
-}
-
-.treatment-checklist-item input {
-    cursor: pointer;
-}
-
-.treatment-checklist-item span.item-price {
-    color: var(--color-text-muted);
-    margin-inline-start: auto;
-    white-space: nowrap;
-}
-
-/* הודעה כשהקטלוג ריק לגמרי - אין אף checkbox להציג */
-.treatment-checklist-empty {
-    padding: var(--space-3);
-    color: var(--color-text-muted);
-    font-size: 13px;
-    text-align: center;
-}
-
-/* פס סיכום "סה"כ" - מתעדכן ע"י JS בכל שינוי בחירה */
-.combo-totals {
-    background-color: var(--color-primary-light);
-    color: var(--color-primary-dark);
-    border-radius: var(--radius-md);
-    padding: var(--space-3);
-    font-size: 13px;
-    font-weight: 600;
-    margin-top: var(--space-3);
-}
-
-
-/* ============================================================
-   13. מודלים (חלונות קופצים)
-   ============================================================ */
-.modal-overlay {
-    position: fixed;
-    inset: 0;
-    background-color: rgba(44, 35, 51, 0.45);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: var(--space-4);
-    z-index: 100;
-}
-
-.modal-overlay[hidden] {
-    display: none;
-}
-
-.modal {
-    background-color: var(--color-surface);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-lg);
-    width: 100%;
-    max-width: 480px;
-    max-height: 90vh;
-    display: flex;
-    flex-direction: column;
-}
-
-.modal-small {
-    max-width: 380px;
-}
-
-.modal-large {
-    max-width: 680px;
-}
-
-.modal-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: var(--space-4) var(--space-5);
-    border-bottom: 1px solid var(--color-border);
-}
-
-.modal-close {
-    background: transparent;
-    border: none;
-    font-size: 22px;
-    line-height: 1;
-    color: var(--color-text-muted);
-    padding: var(--space-1);
-}
-
-.modal-close:hover {
-    color: var(--color-text);
-}
-
-.modal-body {
-    padding: var(--space-5);
-    overflow-y: auto;
-}
-
-.modal-footer {
-    display: flex;
-    justify-content: flex-end;
-    gap: var(--space-3);
-    padding: var(--space-4) var(--space-5);
-    border-top: 1px solid var(--color-border);
-}
-
-.history-section {
-    margin-bottom: var(--space-5);
-}
-
-.history-section:last-child {
-    margin-bottom: 0;
-}
-
-.history-total {
-    text-align: left;
-    margin-top: var(--space-3);
-    font-size: 14px;
-    color: var(--color-text-muted);
-}
-
-
-/* ============================================================
-   14. דיאלוג אישור - נראה כמו מודל קטן, אבל בלי טופס
-   ============================================================ */
-#confirm-dialog .modal-body p {
-    color: var(--color-text-muted);
-    font-size: 14px;
-}
-
-
-/* ============================================================
-   15. תגי סטטוס (badges) - צבע לפי משמעות הסטטוס
-   ============================================================ */
 .badge {
-    display: inline-flex;
-    align-items: center;
-    padding: 3px var(--space-2);
-    border-radius: 999px;
-    font-size: 12px;
-    font-weight: 600;
+    display: inline-flex; align-items: center; font-size: 11.5px; padding: 3px 10px;
+    border-radius: 20px; background: var(--gold-bg-2); color: var(--gold-ink);
 }
+.badge.pink { background: var(--pink-bg); color: var(--pink-ink); }
+.badge.sage { background: var(--sage-bg); color: var(--sage-ink); }
+.badge.blue { background: var(--blue-bg); color: var(--blue-ink); }
+.badge.muted { background: var(--bg); color: var(--muted-2); }
 
-.badge-pending, .badge-new {
-    background-color: var(--color-warning-bg);
-    color: var(--color-warning);
+.progress-track { height: 5px; border-radius: 5px; background: #F1EFEA; overflow: hidden; }
+.progress-fill { height: 100%; border-radius: 5px; background: linear-gradient(90deg, #D9C49B, var(--gold)); }
+
+.tabs { display: flex; gap: 26px; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+.tab { padding-bottom: 12px; font-size: 14px; cursor: pointer; color: var(--muted-2); }
+.tab.active { color: var(--ink); font-weight: 600; box-shadow: inset 0 -2px 0 0 var(--gold); }
+
+/* ---------- forms ---------- */
+.field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.field label { font-size: 12.5px; color: var(--muted); }
+.field input, .field select, .field textarea {
+    font-family: inherit; font-size: 14px; padding: 10px 12px; border-radius: var(--radius-xs);
+    border: 1px solid rgba(44,44,44,0.12); background: #FCFAF6; color: var(--ink);
 }
-
-.badge-completed, .badge-converted {
-    background-color: var(--color-success-bg);
-    color: var(--color-success);
+.field input:focus, .field select:focus, .field textarea:focus {
+    outline: none; border-color: var(--gold-bar);
 }
+.field-error { font-size: 12px; color: var(--danger); }
+.field-row { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 14px; }
 
-.badge-cancelled, .badge-rejected {
-    background-color: var(--color-danger-bg);
-    color: var(--color-danger);
+/* ---------- modal / toast ---------- */
+.overlay {
+    position: fixed; inset: 0; background: rgba(44,44,44,0.28);
+    display: flex; align-items: center; justify-content: center; z-index: 60; padding: 20px;
 }
-
-.badge-in_progress {
-    background-color: var(--color-info-bg);
-    color: var(--color-info);
+.modal {
+    background: #fff; border-radius: var(--radius-lg); box-shadow: var(--shadow-pop);
+    width: 100%; max-width: 480px; max-height: 88vh; overflow-y: auto; padding: 24px 26px;
 }
+.modal-title { margin: 0 0 18px; font-size: 18px; font-weight: 600; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
 
-
-/* ============================================================
-   16. הודעות toast - מופיעות זמנית ונעלמות לבד (ע"י JS בשלב 4)
-   ============================================================ */
-.toast-container {
-    position: fixed;
-    bottom: var(--space-5);
-    left: var(--space-5);
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    z-index: 200;
-}
-
+.toast-stack { position: fixed; bottom: 22px; left: 22px; z-index: 80; display: flex; flex-direction: column; gap: 8px; }
 .toast {
-    background-color: var(--color-text);
-    color: #ffffff;
-    padding: var(--space-3) var(--space-4);
-    border-radius: var(--radius-md);
-    box-shadow: var(--shadow-md);
-    font-size: 14px;
-    min-width: 220px;
-    animation: toast-in 0.2s ease;
-    /* app.js מאפס opacity ל-0 לפני ההסרה מה-DOM - המעבר נותן דהייה חלקה */
-    transition: opacity 0.2s ease;
+    background: var(--ink); color: #fff; padding: 12px 18px; border-radius: 12px;
+    font-size: 13.5px; box-shadow: var(--shadow-pop); animation: toastIn .18s ease-out;
 }
+.toast.error { background: var(--danger); }
+.toast.success { background: #4E6E55; }
+@keyframes toastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 
-@keyframes toast-in {
-    from { opacity: 0; transform: translateY(8px); }
-    to { opacity: 1; transform: translateY(0); }
+.empty-state { padding: 46px 0 34px; display: flex; flex-direction: column; align-items: center; gap: 16px; text-align: center; color: var(--muted-3); }
+.empty-state-title { font-size: 16px; font-weight: 600; color: var(--ink); }
+.empty-state-icon { opacity: .85; }
+
+/* ---------- calendar ---------- */
+.cal-toolbar { display: flex; align-items: center; gap: 16px; margin-bottom: 18px; }
+.cal-nav-btn {
+    display: flex; align-items: center; justify-content: center; width: 32px; height: 32px;
+    border-radius: var(--radius-xs); background: #fff; box-shadow: var(--shadow-card); cursor: pointer;
 }
-
-.toast-success {
-    background-color: var(--color-success);
+.cal-nav-btn:hover { background: var(--gold-bg); }
+.cal-range-label { font-size: 14.5px; font-weight: 600; }
+.cal-segmented {
+    display: flex; background: #F1EFEA; border-radius: var(--radius-sm); padding: 3px; gap: 2px;
+    margin-inline-start: auto;
 }
-
-.toast-error {
-    background-color: var(--color-danger);
+.cal-segment {
+    padding: 7px 16px; border-radius: 9px; font-size: 13px; cursor: pointer; color: var(--muted);
 }
+.cal-segment.active { background: #fff; color: var(--ink); font-weight: 600; box-shadow: var(--shadow-card); }
+.cal-legend { display: flex; align-items: center; gap: 16px; margin-inline-start: 18px; }
+.cal-legend-item { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted-2); }
+.cal-legend-dot { width: 7px; height: 7px; border-radius: 50%; }
 
+.cal-tooltip {
+    position: fixed; width: 246px; background: #fff; border-radius: var(--radius-md);
+    box-shadow: var(--shadow-pop); padding: 14px 16px; z-index: 90; pointer-events: none;
+}
+.cal-tooltip-title { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+.cal-tooltip-row { font-size: 12.5px; color: var(--muted-2); margin-top: 4px; display: flex; align-items: center; gap: 6px; }
 
-/* ============================================================
-   17. רספונסיביות - טאבלט ומסכים קטנים
-   ============================================================ */
+.cal-month-grid { display: grid; grid-template-columns: repeat(7, minmax(0,1fr)); gap: 1px; background: var(--border-soft); border-radius: var(--radius-md); overflow: hidden; }
+.cal-month-head { background: #fff; padding: 10px; text-align: center; font-size: 12px; color: var(--muted-3); font-weight: 500; }
+.cal-month-cell { background: #fff; min-height: 92px; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+.cal-month-cell.outside { opacity: .38; }
+.cal-month-date { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; font-size: 12.5px; border-radius: 50%; font-family: var(--font-num); }
+.cal-month-date.today { background: var(--gold-bar); color: #fff; font-weight: 600; }
+.cal-month-dots { display: flex; gap: 4px; flex-wrap: wrap; }
+.cal-month-dot { width: 6px; height: 6px; border-radius: 50%; }
+
+.loading-row { padding: 30px; text-align: center; color: var(--muted-3); font-size: 13.5px; }
+
+/* ---------- kanban (leads) ---------- */
+.kanban { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 16px; align-items: start; }
+.kanban-col { padding: 16px 14px 18px; border-radius: var(--radius-lg); background: #F6F4F0; min-height: 300px; }
+.kanban-col-head { display: flex; align-items: center; gap: 8px; padding: 0 4px 14px; font-size: 13.5px; font-weight: 600; }
+.kanban-dot { width: 7px; height: 7px; border-radius: 50%; }
+.kanban-count { margin-inline-start: auto; font-family: var(--font-num); font-size: 12px; color: var(--muted-3); }
+.kanban-card { padding: 15px 16px; border-radius: var(--radius-md); background: #fff; box-shadow: var(--shadow-card); margin-bottom: 10px; cursor: grab; transition: box-shadow .15s, opacity .15s; }
+.kanban-card:hover { box-shadow: 0 2px 4px rgba(44,44,44,0.04), 0 14px 30px rgba(44,44,44,0.08); }
+.kanban-card.dragging { opacity: 0.35; }
+.kanban-drop-zone { min-height: 60px; }
+.kanban-col { transition: background .15s; }
+
+/* ---------- login page ---------- */
+.login-page {
+    min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px;
+}
+.login-card { width: 100%; max-width: 380px; background: #fff; border-radius: var(--radius-lg); box-shadow: var(--shadow-pop); padding: 36px 32px; }
+.login-logo { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-bottom: 26px; }
+
+/* ---------- utility ---------- */
+.flex { display: flex; }
+.items-center { align-items: center; }
+.gap-8 { gap: 8px; }
+.gap-12 { gap: 12px; }
+.flex-1 { flex: 1 1 auto; min-width: 0; }
+.text-muted { color: var(--muted-3); }
+.text-sm { font-size: 12.5px; }
+.mt-8 { margin-top: 8px; }
+.mt-16 { margin-top: 16px; }
+
 @media (max-width: 900px) {
-    .app-shell {
-        flex-direction: column;
-    }
-
-    .sidebar {
-        width: 100%;
-        flex-direction: row;
-        align-items: center;
-        padding: var(--space-3) var(--space-4);
-        gap: var(--space-4);
-        overflow-x: auto;
-    }
-
-    .sidebar-nav {
-        flex-direction: row;
-        gap: var(--space-2);
-    }
-
-    .nav-item {
-        flex-direction: column;
-        gap: 2px;
-        padding: var(--space-2) var(--space-3);
-        white-space: nowrap;
-    }
-
-    .nav-label {
-        font-size: 11px;
-    }
-
-    .main-content {
-        padding: var(--space-4);
-    }
-
-    .stats-grid {
-        grid-template-columns: repeat(2, 1fr);
-    }
-
-    .form-row {
-        grid-template-columns: 1fr;
-    }
-}
-
-@media (max-width: 560px) {
-    .stats-grid {
-        grid-template-columns: 1fr;
-    }
-
-    .screen-header {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: var(--space-3);
-    }
-
-    .toolbar-search {
-        max-width: 100%;
-        width: 100%;
-    }
+    .sidebar { display: none; }
+    .grid-3, .grid-2, .field-row, .kanban { grid-template-columns: 1fr; }
+    .topbar, .page-body { padding-inline: 16px; }
 }

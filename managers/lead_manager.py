@@ -100,7 +100,8 @@ class LeadManager:
                 phone=row[2],
                 source=row[3],
                 status=row[4],
-                notes=row[5]
+                notes=row[5],
+                created_at=row[6]
             )
             leads.append(lead)
         

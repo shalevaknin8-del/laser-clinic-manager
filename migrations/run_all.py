@@ -25,6 +25,17 @@ MIGRATION_MODULES = [
     "migrations.001_add_national_id",
     "migrations.002_add_otp_table",
     "migrations.003_add_users_table",
+    "migrations.004_orm_refactor",
+    # Release 2 - הזמנה עצמית (פורטל + צ'אטבוט). אין מיגרציית 009:
+    # זו נורמליזציית זמן (utils/datetime_utils.py) בלי שינוי סכמה
+    "migrations.005_slot_reservations",
+    "migrations.006_extend_appointments",
+    "migrations.007_notification_log",
+    "migrations.008_clinic_settings",
+    "migrations.010_approval_workflow",
+    "migrations.011_approval_settings",
+    "migrations.012_client_token_version",
+    "migrations.013_portal_registration",
 ]
 
 

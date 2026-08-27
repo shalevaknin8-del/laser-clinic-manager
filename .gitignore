@@ -8,6 +8,12 @@ data/*.db
 data/*.db-wal
 data/*.db-shm
 
+# Uploaded health declaration documents - sensitive, local-storage only
+data/health_declarations/
+
+# Test database (isolated, regenerated on every test run)
+tests/_test_data/
+
 # Editor
 .vscode/
 .DS_Store

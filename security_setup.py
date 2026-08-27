@@ -54,11 +54,15 @@ def setup_security_headers(app):
 
         # מגדיר מאילו מקורות מותר לטעון תוכן.
         # unsafe-inline נדרש כי הסגנונות והסקריפטים משובצים
-        # בתוך קבצי ה-HTML ולא בקבצים נפרדים
+        # בתוך קבצי ה-HTML ולא בקבצים נפרדים.
+        # fonts.googleapis.com/gstatic.com נוספו לצורך גופני Google
+        # Fonts (Assistant, Plus Jakarta Sans) בעיצוב ממשק הניהול -
+        # ראו static/style.css ו-templates/*.html
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
             "script-src 'self' 'unsafe-inline'; "
-            "style-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+            "font-src 'self' https://fonts.gstatic.com; "
             "img-src 'self' data:; "
             "connect-src 'self'; "
             "frame-ancestors 'none'"
@@ -87,6 +91,15 @@ SENSITIVE_ENDPOINT_LIMITS = {
     "/api/verification/send-code": "5 per minute",
     "/api/verification/verify-code": "10 per minute",
     "/api/verification/national-id": "10 per minute",
+
+    # פורטל (Release 2) - זהה בעיקרון לצ'אטבוט ולהתחברות למעלה
+    "/api/portal/identify": "5 per minute",
+    "/api/portal/verify": "10 per minute",
+    # ראו Part 19.6 במפרט - מספר קבוע במפורש, לא נגד סודיות
+    # (פנוי/תפוס אינו סוד) אלא נגד מיפוי יומן אוטומטי
+    "/api/portal/availability": "30 per minute",
+    "/api/portal/reserve": "20 per minute",
+    "/api/portal/book": "20 per minute",
 }
 
 

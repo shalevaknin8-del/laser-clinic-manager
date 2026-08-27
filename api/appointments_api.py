@@ -5,6 +5,10 @@ from managers.appointment_manager import AppointmentManager
 from managers.appointment_treatment_manager import AppointmentTreatmentManager
 from managers.client_manager import ClientManager
 from managers.treatment_manager import TreatmentManager
+from managers.room_manager import RoomManager
+from managers.machine_manager import MachineManager
+from managers.package_manager import PackageManager
+from managers.user_manager import UserManager
 from auth.decorators import get_current_user
 from flask import jsonify as _jsonify
 from auth.decorators import require_permission
@@ -35,6 +39,57 @@ appointment_treatment_manager = AppointmentTreatmentManager()
 # נחוצים לאימות שהלקוח והטיפולים שנבחרו קיימים
 client_manager = ClientManager()
 treatment_manager = TreatmentManager()
+
+# נחוצים לאימות משאבי הזימון החכם (חדר/מכשיר/עובדת/חבילה) - שלב 3
+room_manager = RoomManager()
+machine_manager = MachineManager()
+package_manager = PackageManager()
+user_manager = UserManager()
+
+
+def _resolve_scheduling_fields(data, treatment_ids, existing=None):
+    """
+    שולף ומאמת את שדות הזימון החכם (room_id/machine_id/staff_user_id/
+    client_package_id) מתוך גוף הבקשה, עם נפילה לערך הקיים בעדכון.
+
+    machine_id מטופל אחרת מהשאר: אם לא נשלח במפורש, הוא נקבע
+    אוטומטית לפי MachineManager.resolve_machine_id - כרגע יש
+    מכשיר פעיל אחד בקליניקה, ואין טעם לחייב את ה-frontend להציג
+    בורר מכשיר עם אפשרות יחידה. ראו התיעוד המלא שם.
+
+    מחזירה (fields_dict, error_message, field_name). fields_dict הוא
+    None אם הייתה שגיאת ולידציה - אז יש להשתמש בשני הערכים האחרים
+    כדי לבנות תגובת json_error, באותה צורה כמו שאר הבדיקות בקובץ הזה.
+    """
+    room_id = data.get("room_id", getattr(existing, "room_id", None))
+    requested_machine_id = data.get("machine_id", getattr(existing, "machine_id", None))
+    staff_user_id = data.get("staff_user_id", getattr(existing, "staff_user_id", None))
+    client_package_id = data.get("client_package_id", getattr(existing, "client_package_id", None))
+
+    if room_id is not None and room_manager.get_room_by_id(room_id) is None:
+        return None, "החדר שנבחר לא נמצא", "room_id"
+
+    primary_treatment = treatment_manager.get_treatment_by_id(treatment_ids[0]) if treatment_ids else None
+    machine_id, error_message = machine_manager.resolve_machine_id(primary_treatment, requested_machine_id)
+    if error_message:
+        return None, error_message, "machine_id"
+
+    if staff_user_id is not None and user_manager.get_user_by_id(staff_user_id) is None:
+        return None, "העובדת שנבחרה לא נמצאה", "staff_user_id"
+
+    if client_package_id is not None:
+        client_package = package_manager.get_client_package_by_id(client_package_id)
+        if client_package is None:
+            return None, "החבילה שנבחרה לא נמצאה", "client_package_id"
+        if client_package.sessions_remaining <= 0:
+            return None, "לא נותרו מפגשים בחבילה שנבחרה", "client_package_id"
+
+    return {
+        "room_id": room_id,
+        "machine_id": machine_id,
+        "staff_user_id": staff_user_id,
+        "client_package_id": client_package_id,
+    }, None, None
 
 @appointments_bp.before_request
 def require_authenticated_user():
@@ -98,8 +153,15 @@ def get_available_slots():
     if not treatment_ids:
         return json_error("יש לבחור טיפול אחד לפחות", field="treatment_id")
 
+    client_id = request.args.get("client_id", type=int)
+    room_id = request.args.get("room_id", type=int)
+    machine_id = request.args.get("machine_id", type=int)
+    staff_user_id = request.args.get("staff_user_id", type=int)
+
     slots = appointment_treatment_manager.get_combo_available_slots(
-        appointment_date, treatment_ids
+        appointment_date, treatment_ids,
+        client_id=client_id, room_id=room_id, machine_id=machine_id,
+        staff_user_id=staff_user_id,
     )
     return jsonify({"available_slots": slots})
 
@@ -120,9 +182,16 @@ def check_appointment_conflict():
 
     exclude_appointment_id = int(exclude_id) if exclude_id and exclude_id.isdigit() else None
 
+    client_id = request.args.get("client_id", type=int)
+    room_id = request.args.get("room_id", type=int)
+    machine_id = request.args.get("machine_id", type=int)
+    staff_user_id = request.args.get("staff_user_id", type=int)
+
     has_conflict, message = appointment_treatment_manager.check_combo_conflict(
         appointment_date, appointment_time, treatment_ids,
-        exclude_appointment_id=exclude_appointment_id
+        exclude_appointment_id=exclude_appointment_id,
+        client_id=client_id, room_id=room_id, machine_id=machine_id,
+        staff_user_id=staff_user_id,
     )
     return jsonify({"has_conflict": has_conflict, "message": message})
 
@@ -159,8 +228,16 @@ def create_appointment():
     if not is_valid:
         return json_error(error_message, field="appointment_time")
 
+    scheduling_fields, error_message, field = _resolve_scheduling_fields(data, treatment_ids)
+    if scheduling_fields is None:
+        return json_error(error_message, field=field)
+
     has_conflict, conflict_message = appointment_treatment_manager.check_combo_conflict(
-        appointment_date, appointment_time, treatment_ids
+        appointment_date, appointment_time, treatment_ids,
+        client_id=client_id,
+        room_id=scheduling_fields["room_id"],
+        machine_id=scheduling_fields["machine_id"],
+        staff_user_id=scheduling_fields["staff_user_id"],
     )
     if has_conflict:
         return json_error(conflict_message, status_code=409)
@@ -174,6 +251,8 @@ def create_appointment():
         appointment_time=appointment_time,
         notes=notes,
     )
+    for field_name, value in scheduling_fields.items():
+        setattr(new_appointment, field_name, value)
 
     result, db_error = run_db_operation(
         lambda: appointment_manager.insert_appointment(new_appointment),
@@ -237,12 +316,27 @@ def update_appointment(appointment_id):
     if not is_valid:
         return json_error(error_message, field="status")
 
+    scheduling_fields, error_message, field = _resolve_scheduling_fields(
+        data, treatment_ids, existing=existing
+    )
+    if scheduling_fields is None:
+        return json_error(error_message, field=field)
+
     has_conflict, conflict_message = appointment_treatment_manager.check_combo_conflict(
         appointment_date, appointment_time, treatment_ids,
-        exclude_appointment_id=appointment_id
+        exclude_appointment_id=appointment_id,
+        client_id=client_id,
+        room_id=scheduling_fields["room_id"],
+        machine_id=scheduling_fields["machine_id"],
+        staff_user_id=scheduling_fields["staff_user_id"],
     )
     if has_conflict:
         return json_error(conflict_message, status_code=409)
+
+    # תור שעובר לסטטוס 'completed' ומקושר לחבילה מפחית מפגש אחד
+    # מהיתרה - פעם אחת בדיוק, ברגע המעבר עצמו, לא בכל שמירה חוזרת
+    completing_now = status == "completed" and existing.status != "completed"
+    client_package_id = scheduling_fields["client_package_id"]
 
     existing.client_id = client_id
     existing.treatment_id = treatment_ids[0]
@@ -250,6 +344,10 @@ def update_appointment(appointment_id):
     existing.appointment_time = appointment_time
     existing.status = status
     existing.notes = notes
+    existing.room_id = scheduling_fields["room_id"]
+    existing.machine_id = scheduling_fields["machine_id"]
+    existing.staff_user_id = scheduling_fields["staff_user_id"]
+    existing.client_package_id = client_package_id
 
     success, db_error = run_db_operation(
         lambda: appointment_manager.update_appointment(existing),
@@ -263,6 +361,10 @@ def update_appointment(appointment_id):
     appointment_treatment_manager.set_treatments_for_appointment(
         appointment_id, treatment_ids
     )
+
+    if completing_now and client_package_id is not None:
+        if not package_manager.decrement_session_for_completed_appointment(client_package_id):
+            return json_error(package_manager.last_error, status_code=409)
 
     return jsonify(appointment_to_dict(existing))
 

@@ -1,0 +1,920 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Assistant:wght@200..800&family=Plus+Jakarta+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #FAF9F6; }
+  body { -webkit-font-smoothing: antialiased; }
+  a { color: #A8874F; text-decoration: none; }
+  a:hover { color: #8A6D3B; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: rgba(44,44,44,0.12); border-radius: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  @keyframes omFade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+</style>
+</helmet>
+<div dir="rtl" style="display: flex; min-height: 100vh; background: #FAF9F6; font-family: Assistant, 'Segoe UI', sans-serif; color: #2C2C2C;">
+
+  <aside style="flex: 0 0 auto; width: {{ sidebarWidth }}; padding: 26px 14px 22px; display: flex; flex-direction: column; gap: 30px; border-left: 1px solid rgba(44,44,44,0.05); position: sticky; top: 0; height: 100vh; transition: width .28s cubic-bezier(.4,0,.2,1);">
+
+    <div style="display: flex; align-items: center; gap: 11px; padding: 0 8px;">
+      <div style="flex: 0 0 auto; width: 30px; height: 30px; border-radius: 9px; background: linear-gradient(150deg, #C9AC79, #A8874F); display: flex; align-items: center; justify-content: center;">
+        <div style="width: 9px; height: 9px; border: 1.5px solid rgba(255,255,255,0.9); border-radius: 50%;"></div>
+      </div>
+      <div style="min-width: 0; overflow: hidden; opacity: {{ labelOpacity }}; transition: opacity .2s;">
+        <div style="font-size: 14.5px; font-weight: 600; letter-spacing: -0.2px; white-space: nowrap;">לומין אסתטיקס</div>
+        <div style="font-size: 11px; color: #A9A59C; white-space: nowrap; margin-top: 1px;">קליניקת לייזר · תל אביב</div>
+      </div>
+    </div>
+
+    <nav style="display: flex; flex-direction: column; gap: 3px;">
+      <div onClick="{{ goDashboard }}" title="לוח בקרה" style="display: flex; align-items: center; gap: 12px; padding: 9px 8px 9px 10px; border-radius: 10px; cursor: pointer; position: relative; background: {{ navBgDashboard }};" style-hover="background: rgba(44,44,44,0.035)">
+        <div style="position: absolute; right: -14px; top: 50%; transform: translateY(-50%); width: 2px; height: 17px; border-radius: 2px; background: {{ navBarDashboard }};"></div>
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" style="flex: 0 0 auto;"><rect x="3.5" y="3.5" width="7.5" height="7.5" rx="2" stroke="#2C2C2C" stroke-width="1.5"></rect><rect x="13" y="3.5" width="7.5" height="7.5" rx="2" stroke="#C9AC79" stroke-width="1.5"></rect><rect x="3.5" y="13" width="7.5" height="7.5" rx="2" stroke="#2C2C2C" stroke-width="1.5"></rect><rect x="13" y="13" width="7.5" height="7.5" rx="2" stroke="#2C2C2C" stroke-width="1.5"></rect></svg>
+        <span style="font-size: 14px; white-space: nowrap; overflow: hidden; opacity: {{ labelOpacity }}; color: {{ navFgDashboard }}; font-weight: {{ navWeightDashboard }};">לוח בקרה</span>
+      </div>
+
+      <div onClick="{{ goCalendar }}" title="יומן" style="display: flex; align-items: center; gap: 12px; padding: 9px 8px 9px 10px; border-radius: 10px; cursor: pointer; position: relative; background: {{ navBgCalendar }};" style-hover="background: rgba(44,44,44,0.035)">
+        <div style="position: absolute; right: -14px; top: 50%; transform: translateY(-50%); width: 2px; height: 17px; border-radius: 2px; background: {{ navBarCalendar }};"></div>
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" style="flex: 0 0 auto;"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5" stroke="#2C2C2C" stroke-width="1.5"></rect><path d="M3.5 10h17" stroke="#2C2C2C" stroke-width="1.5"></path><path d="M8 3.5v3M16 3.5v3" stroke="#2C2C2C" stroke-width="1.5" stroke-linecap="round"></path><rect x="7" y="13" width="4" height="3.5" rx="1" fill="#C9AC79"></rect></svg>
+        <span style="font-size: 14px; white-space: nowrap; overflow: hidden; opacity: {{ labelOpacity }}; color: {{ navFgCalendar }}; font-weight: {{ navWeightCalendar }};">יומן וזימונים</span>
+      </div>
+
+      <div onClick="{{ goClients }}" title="לקוחות" style="display: flex; align-items: center; gap: 12px; padding: 9px 8px 9px 10px; border-radius: 10px; cursor: pointer; position: relative; background: {{ navBgClients }};" style-hover="background: rgba(44,44,44,0.035)">
+        <div style="position: absolute; right: -14px; top: 50%; transform: translateY(-50%); width: 2px; height: 17px; border-radius: 2px; background: {{ navBarClients }};"></div>
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" style="flex: 0 0 auto;"><circle cx="12" cy="8" r="4" stroke="#2C2C2C" stroke-width="1.5"></circle><path d="M4.5 20.5c0-4 3.4-6.5 7.5-6.5s7.5 2.5 7.5 6.5" stroke="#2C2C2C" stroke-width="1.5" stroke-linecap="round"></path><circle cx="18.5" cy="6" r="1.6" fill="#C9AC79"></circle></svg>
+        <span style="font-size: 14px; white-space: nowrap; overflow: hidden; opacity: {{ labelOpacity }}; color: {{ navFgClients }}; font-weight: {{ navWeightClients }};">לקוחות</span>
+      </div>
+
+      <div onClick="{{ goLeads }}" title="לידים" style="display: flex; align-items: center; gap: 12px; padding: 9px 8px 9px 10px; border-radius: 10px; cursor: pointer; position: relative; background: {{ navBgLeads }};" style-hover="background: rgba(44,44,44,0.035)">
+        <div style="position: absolute; right: -14px; top: 50%; transform: translateY(-50%); width: 2px; height: 17px; border-radius: 2px; background: {{ navBarLeads }};"></div>
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" style="flex: 0 0 auto;"><rect x="3.5" y="4.5" width="5" height="15" rx="1.8" stroke="#2C2C2C" stroke-width="1.5"></rect><rect x="10" y="4.5" width="5" height="10" rx="1.8" stroke="#2C2C2C" stroke-width="1.5"></rect><rect x="16.5" y="4.5" width="4" height="7" rx="1.8" stroke="#C9AC79" stroke-width="1.5"></rect></svg>
+        <span style="font-size: 14px; white-space: nowrap; overflow: hidden; opacity: {{ labelOpacity }}; color: {{ navFgLeads }}; font-weight: {{ navWeightLeads }};">צינור לידים</span>
+      </div>
+
+      <div style="height: 1px; background: rgba(44,44,44,0.06); margin: 12px 10px;"></div>
+
+      <div style="display: flex; align-items: center; gap: 12px; padding: 9px 8px 9px 10px; border-radius: 10px; cursor: pointer;" style-hover="background: rgba(44,44,44,0.035)">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" style="flex: 0 0 auto;"><path d="M5 8.5h14M5 15.5h9" stroke="#2C2C2C" stroke-width="1.5" stroke-linecap="round"></path><circle cx="16.5" cy="15.5" r="2" stroke="#C9AC79" stroke-width="1.5"></circle><circle cx="8" cy="8.5" r="2" stroke="#2C2C2C" stroke-width="1.5" fill="#FAF9F6"></circle></svg>
+        <span style="font-size: 14px; color: #6E6A63; white-space: nowrap; overflow: hidden; opacity: {{ labelOpacity }};">קטלוג וחבילות</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px; padding: 9px 8px 9px 10px; border-radius: 10px; cursor: pointer;" style-hover="background: rgba(44,44,44,0.035)">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" style="flex: 0 0 auto;"><rect x="3.5" y="6" width="17" height="12" rx="2.5" stroke="#2C2C2C" stroke-width="1.5"></rect><path d="M8 18v2.5M16 18v2.5" stroke="#2C2C2C" stroke-width="1.5" stroke-linecap="round"></path><circle cx="12" cy="12" r="2" stroke="#C9AC79" stroke-width="1.5"></circle></svg>
+        <span style="font-size: 14px; color: #6E6A63; white-space: nowrap; overflow: hidden; opacity: {{ labelOpacity }};">מכשירים וחדרים</span>
+      </div>
+    </nav>
+
+    <div style="margin-top: auto; display: flex; flex-direction: column; gap: 14px;">
+      <div onClick="{{ toggleSidebar }}" style="display: flex; align-items: center; gap: 12px; padding: 9px 8px 9px 10px; border-radius: 10px; cursor: pointer; color: #A9A59C;" style-hover="background: rgba(44,44,44,0.035)">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" style="flex: 0 0 auto;"><path d="M14 8l-4 4 4 4" stroke="#8A8781" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="transform: {{ chevronFlip }}; transform-origin: 12px 12px;"></path><path d="M19 4.5v15" stroke="#8A8781" stroke-width="1.5" stroke-linecap="round"></path></svg>
+        <span style="font-size: 13px; white-space: nowrap; overflow: hidden; opacity: {{ labelOpacity }};">כווץ תפריט</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 11px; padding: 10px; border-radius: 12px; background: #FFFFFF; box-shadow: 0 1px 2px rgba(44,44,44,0.03), 0 6px 18px rgba(44,44,44,0.05);">
+        <div style="flex: 0 0 auto; width: 30px; height: 30px; border-radius: 50%; background: #F3EDE1; color: #A8874F; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600;">ד״כ</div>
+        <div style="min-width: 0; overflow: hidden; opacity: {{ labelOpacity }};">
+          <div style="font-size: 13px; font-weight: 600; white-space: nowrap;">דנה כספי</div>
+          <div style="font-size: 11px; color: #A9A59C; white-space: nowrap;">מנהלת קליניקה</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <main style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column;">
+
+    <header style="display: flex; align-items: center; gap: 20px; padding: 24px 34px 18px;">
+      <div style="flex: 1 1 auto; min-width: 0;">
+        <div style="font-size: 12px; color: #A9A59C; letter-spacing: 0.4px;">{{ crumb }}</div>
+        <h1 style="margin: 3px 0 0; font-size: 25px; font-weight: 600; letter-spacing: -0.5px;">{{ pageTitle }}</h1>
+      </div>
+      <div style="display: flex; align-items: center; gap: 9px; padding: 0 13px; height: 38px; border-radius: 11px; background: #FFFFFF; box-shadow: 0 1px 2px rgba(44,44,44,0.03), 0 6px 18px rgba(44,44,44,0.04); min-width: 230px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="6.5" stroke="#B4B0A8" stroke-width="1.5"></circle><path d="M16 16l4 4" stroke="#B4B0A8" stroke-width="1.5" stroke-linecap="round"></path></svg>
+        <span style="font-size: 13.5px; color: #B4B0A8;">חיפוש לקוחה, תור או ליד</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <div style="width: 38px; height: 38px; border-radius: 11px; background: #FFFFFF; box-shadow: 0 1px 2px rgba(44,44,44,0.03), 0 6px 18px rgba(44,44,44,0.04); display: flex; align-items: center; justify-content: center; cursor: pointer;">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M6 10a6 6 0 1112 0c0 4 1.5 5.5 1.5 5.5h-15S6 14 6 10z" stroke="#2C2C2C" stroke-width="1.5" stroke-linejoin="round"></path><path d="M10 18.5a2 2 0 004 0" stroke="#C9AC79" stroke-width="1.5" stroke-linecap="round"></path></svg>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 14px; border-radius: 11px; background: #2C2C2C; color: #FFFFFF; font-size: 13.5px; font-weight: 500; cursor: pointer;" style-hover="background: #3D3B37">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M12 5.5v13M5.5 12h13" stroke="#FFFFFF" stroke-width="1.6" stroke-linecap="round"></path></svg>
+          תור חדש
+        </div>
+      </div>
+    </header>
+
+    <sc-if value="{{ isDashboard }}" hint-placeholder-val="{{ true }}">
+      <div style="padding: 6px 34px 40px; display: flex; flex-direction: column; gap: 18px;">
+
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px;">
+          <div style="position: relative; overflow: hidden; padding: 20px 22px 22px; border-radius: 18px; background: #FFFFFF; box-shadow: 0 1px 2px rgba(44,44,44,0.03), 0 14px 34px rgba(44,44,44,0.055);">
+            <svg viewBox="0 0 300 70" preserveAspectRatio="none" style="position: absolute; inset-inline: 0; bottom: 0; width: 100%; height: 62px; opacity: 0.5;"><polyline points="0,58 30,52 60,55 90,42 120,46 150,34 180,37 210,26 240,29 270,16 300,10" fill="none" stroke="#DCD8D0" stroke-width="1.5"></polyline></svg>
+            <div style="position: relative; display: flex; align-items: center; gap: 9px; color: #8A8781; font-size: 13px;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 4.5v15" stroke="#2C2C2C" stroke-width="1.5" stroke-linecap="round"></path><path d="M15.5 8.2C15 6.8 13.7 6 12 6c-2 0-3.5 1.1-3.5 2.7 0 1.8 1.7 2.4 3.5 2.9 1.8.5 3.7 1.1 3.7 3 0 1.8-1.6 3-3.7 3-1.9 0-3.3-.9-3.8-2.3" stroke="#C9AC79" stroke-width="1.5" stroke-linecap="round"></path></svg>
+              הכנסות החודש
+            </div>
+            <div style="position: relative; margin-top: 12px; display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap;">
+              <div style="font-family: 'Plus Jakarta Sans', sans-serif; font-size: 32px; font-weight: 500; letter-spacing: -1.2px; line-height: 1; white-space: nowrap;">₪ 42,850</div>
+              <div style="display: flex; align-items: center; gap: 3px; padding: 3px 8px; border-radius: 20px; background: #EFF3EE; color: #6F8A76; font-size: 12px; font-weight: 600;">
+                <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M6 9.5V2.5M3 5.5L6 2.5l3 3" stroke="#7E9A85" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                12.4%
+              </div>
+            </div>
+            <div style="position: relative; margin-top: 7px; font-size: 12.5px; color: #A9A59C;">מול ₪ 38,120 בחודש שעבר</div>
+          </div>
+
+          <div style="position: relative; overflow: hidden; padding: 20px 22px 22px; border-radius: 18px; background: #FFFFFF; box-shadow: 0 1px 2px rgba(44,44,44,0.03), 0 14px 34px rgba(44,44,44,0.055);">
+            <svg viewBox="0 0 300 70" preserveAspectRatio="none" style="position: absolute; inset-inline: 0; bottom: 0; width: 100%; height: 62px; opacity: 0.5;"><polyline points="0,44 30,38 60,48 90,40 120,30 150,36 180,24 210,32 240,20 270,26 300,18" fill="none" stroke="#DCD8D0" stroke-width="1.5"></polyline></svg>
+            <div style="position: relative; display: flex; align-items: center; gap: 9px; color: #8A8781; font-size: 13px;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="10" cy="9" r="3.5" stroke="#2C2C2C" stroke-width="1.5"></circle><path d="M4 19.5c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5" stroke="#2C2C2C" stroke-width="1.5" stroke-linecap="round"></path><path d="M18 7v5M15.5 9.5h5" stroke="#C9AC79" stroke-width="1.5" stroke-linecap="round"></path></svg>
+              לידים חדשים
+            </div>
+            <div style="position: relative; margin-top: 12px; display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap;">
+              <div style="font-family: 'Plus Jakarta Sans', sans-serif; font-size: 32px; font-weight: 500; letter-spacing: -1.2px; line-height: 1; white-space: nowrap;">18</div>
+              <div style="display: flex; align-items: center; gap: 3px; padding: 3px 8px; border-radius: 20px; background: #EFF3EE; color: #6F8A76; font-size: 12px; font-weight: 600;">
+                <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M6 9.5V2.5M3 5.5L6 2.5l3 3" stroke="#7E9A85" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                5
+              </div>
+            </div>
+            <div style="position: relative; margin-top: 7px; font-size: 12.5px; color: #A9A59C;">7 מהם מאינסטגרם, 5 מהפניות</div>
+          </div>
+
+          <div style="position: relative; overflow: hidden; padding: 20px 22px 22px; border-radius: 18px; background: #FFFFFF; box-shadow: 0 1px 2px rgba(44,44,44,0.03), 0 14px 34px rgba(44,44,44,0.055);">
+            <svg viewBox="0 0 300 70" preserveAspectRatio="none" style="position: absolute; inset-inline: 0; bottom: 0; width: 100%; height: 62px; opacity: 0.5;"><polyline points="0,26 30,32 60,22 90,34 120,28 150,40 180,33 210,44 240,38 270,48 300,42" fill="none" stroke="#DCD8D0" stroke-width="1.5"></polyline></svg>
+            <div style="position: relative; display: flex; align-items: center; gap: 9px; color: #8A8781; font-size: 13px;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="7.5" stroke="#2C2C2C" stroke-width="1.5"></circle><path d="M12 8v4.3l3 1.8" stroke="#C9AC79" stroke-width="1.5" stroke-linecap="round"></path></svg>
+              תורים היום
+            </div>
+            <div style="position: relative; margin-top: 12px; display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap;">
+              <div style="font-family: 'Plus Jakarta Sans', sans-serif; font-size: 32px; font-weight: 500; letter-spacing: -1.2px; line-height: 1; white-space: nowrap;">6</div>
+              <div style="display: flex; align-items: center; gap: 3px; padding: 3px 8px; border-radius: 20px; background: #F8EFF1; color: #A9788A; font-size: 12px; font-weight: 600;">
+                <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M6 2.5v7M3 6.5L6 9.5l3-3" stroke="#C48B9F" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                2
+              </div>
+            </div>
+            <div style="position: relative; margin-top: 7px; font-size: 12.5px; color: #A9A59C;">תפוסה 74% · חלון פנוי ב־13:00</div>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: minmax(0, 1.85fr) minmax(0, 1fr); gap: 18px; align-items: start;">
+
+          <div style="padding: 22px 24px 26px; border-radius: 18px; background: #FFFFFF; box-shadow: 0 1px 2px rgba(44,44,44,0.03), 0 14px 34px rgba(44,44,44,0.055);">
+            <div style="display: flex; align-items: baseline; gap: 12px; margin-bottom: 22px;">
+              <h2 style="margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -0.3px;">ציר היום</h2>
+              <span style="font-size: 12.5px; color: #A9A59C;">רביעי, 26 באוגוסט</span>
+              <span style="margin-inline-start: auto; font-size: 12.5px; color: #A8874F; cursor: pointer;">כל היומן</span>
+            </div>
+
+            <sc-if value="{{ hasToday }}" hint-placeholder-val="{{ true }}">
+              <div style="display: flex; flex-direction: column;">
+                <sc-for list="{{ timeline }}" as="slot" hint-placeholder-count="5">
+                  <div style="display: grid; grid-template-columns: 58px 18px minmax(0, 1fr); gap: 0; align-items: stretch;">
+                    <div style="padding-top: 14px; text-align: start;">
+                      <div style="font-family: 'Plus Jakarta Sans', sans-serif; font-size: 14px; font-weight: 500;">{{ slot.time }}</div>
+                      <div style="font-size: 11.5px; color: #B4B0A8; margin-top: 2px;">{{ slot.duration }}</div>
+                    </div>
+                    <div style="position: relative; display: flex; justify-content: center;">
+                      <div style="width: 1px; background: rgba(44,44,44,0.07);"></div>
+                      <div style="position: absolute; top: 18px; width: 7px; height: 7px; border-radius: 50%; background: {{ slot.dot }};"></div>
+                    </div>
+                    <div style="padding: 8px 0 8px 14px;">
+                      <div style="display: flex; align-items: center; gap: 12px; padding: 13px 16px; border-radius: 14px; background: {{ slot.tint }}; cursor: pointer;" style-hover="filter: brightness(0.985)">
+                        <div style="width: 3px; align-self: stretch; border-radius: 3px; background: {{ slot.dot }};"></div>
+                        <div style="min-width: 0; flex: 1 1 auto;">
+                          <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="font-size: 14.5px; font-weight: 600;">{{ slot.client }}</span>
+                            <span style="font-size: 12px; color: #8A8781;">{{ slot.treatment }}</span>
+                          </div>
+                          <div style="margin-top: 5px; font-size: 12px; color: #8A8781;">{{ slot.resource }}</div>
+                        </div>
+                        <sc-if value="{{ slot.package }}" hint-placeholder-val="{{ true }}">
+                          <div style="font-size: 11.5px; color: #6E6A63; padding: 4px 10px; border-radius: 20px; background: rgba(255,255,255,0.75);">{{ slot.package }}</div>
+                        </sc-if>
+                        <div style="font-size: 12px; color: {{ slot.statusColor }};">{{ slot.status }}</div>
+                      </div>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ isEmptyToday }}" hint-placeholder-val="{{ false }}">
+              <div style="padding: 46px 0 34px; display: flex; flex-direction: column; align-items: center; gap: 20px; text-align: center;">
+                <svg width="140" height="86" viewBox="0 0 140 86" fill="none">
+                  <path d="M18 40h34v18a10 10 0 01-10 10H28a10 10 0 01-10-10V40z" stroke="#D8D4CC" stroke-width="1.5" stroke-linejoin="round"></path>
+                  <path d="M52 45h7a7 7 0 010 14h-7" stroke="#D8D4CC" stroke-width="1.5" stroke-linejoin="round"></path>
+                  <path d="M14 72h44" stroke="#D8D4CC" stroke-width="1.5" stroke-linecap="round"></path>
+                  <path d="M30 32c0-4 6-4 6-8" stroke="#C9AC79" stroke-width="1.5" stroke-linecap="round"></path>
+                  <path d="M74 30h48v42H74z" stroke="#D8D4CC" stroke-width="1.5" stroke-linejoin="round"></path>
+                  <path d="M98 30v42" stroke="#D8D4CC" stroke-width="1.5"></path>
+                  <path d="M80 42h12M80 50h12M104 42h12M104 50h12M104 58h8" stroke="#E2DED6" stroke-width="1.5" stroke-linecap="round"></path>
+                  <path d="M92 24v8M104 24v8" stroke="#C9AC79" stroke-width="1.5" stroke-linecap="round"></path>
+                </svg>
+                <div>
+                  <div style="font-size: 16px; font-weight: 600;">היומן פנוי היום</div>
+                  <div style="margin-top: 6px; font-size: 13.5px; color: #A9A59C; max-width: 300px; text-wrap: pretty;">אין תורים מתוזמנים. זה זמן טוב לחזור אל הלידים שממתינים למעקב.</div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 18px; border-radius: 11px; background: #2C2C2C; color: #FFFFFF; font-size: 13.5px; font-weight: 500; cursor: pointer;" style-hover="background: #3D3B37">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M12 5.5v13M5.5 12h13" stroke="#FFFFFF" stroke-width="1.6" stroke-linecap="round"></path></svg>
+                  תור חדש
+                </div>
+              </div>
+            </sc-if>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 18px;">
+            <div style="padding: 22px 22px 24px; border-radius: 18px; background: #FFFFFF; box-shadow: 0 1px 2px rgba(44,44,44,0.03), 0 14px 34px rgba(44,44,44,0.055);">
+              <div style="display: flex; align-items: baseline; gap: 10px; margin-bottom: 16px;">
+                <h2 style="margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -0.3px;">דורש מעקב</h2>
+                <span style="margin-inline-start: auto; font-size: 12px; color: #B4B0A8;">3 מתוך 18</span>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 2px;">
+                <div style="display: flex; align-items: center; gap: 12px; padding: 11px 10px; border-radius: 12px; cursor: pointer;" style-hover="background: #FAF9F6">
+                  <div style="width: 32px; height: 32px; border-radius: 50%; background: #F8EFF1; color: #A9788A; display: flex; align-items: center; justify-content: center; font-size: 11.5px; font-weight: 600;">ד״א</div>
+                  <div style="flex: 1 1 auto; min-width: 0;">
+                    <div style="font-size: 13.5px; font-weight: 600;">דנה אלמוג</div>
+                    <div style="font-size: 11.5px; color: #A9A59C; margin-top: 2px;">אינסטגרם · פנתה לפני 4 ימים</div>
+                  </div>
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11.7c0 4.3-3.7 7.8-8.2 7.8-1.4 0-2.7-.3-3.9-.9L4 19.5l1-3.6a7.4 7.4 0 01-1.4-4.2C3.6 7.4 7.3 4 11.8 4S20 7.4 20 11.7z" stroke="#7E9A85" stroke-width="1.5" stroke-linejoin="round"></path></svg>
+                </div>
+                <div style="display: flex; align-items: center; gap: 12px; padding: 11px 10px; border-radius: 12px; cursor: pointer;" style-hover="background: #FAF9F6">
+                  <div style="width: 32px; height: 32px; border-radius: 50%; background: #EDF1F6; color: #6C8399; display: flex; align-items: center; justify-content: center; font-size: 11.5px; font-weight: 600;">ל״ב</div>
+                  <div style="flex: 1 1 auto; min-width: 0;">
+                    <div style="font-size: 13.5px; font-weight: 600;">ליאור בן דוד</div>
+                    <div style="font-size: 11.5px; color: #A9A59C; margin-top: 2px;">פייסבוק · מעוניינת בחבילה</div>
+                  </div>
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11.7c0 4.3-3.7 7.8-8.2 7.8-1.4 0-2.7-.3-3.9-.9L4 19.5l1-3.6a7.4 7.4 0 01-1.4-4.2C3.6 7.4 7.3 4 11.8 4S20 7.4 20 11.7z" stroke="#7E9A85" stroke-width="1.5" stroke-linejoin="round"></path></svg>
+                </div>
+                <div style="display: flex; align-items: center; gap: 12px; padding: 11px 10px; border-radius: 12px; cursor: pointer;" style-hover="background: #FAF9F6">
+                  <div style="width: 32px; height: 32px; border-radius: 50%; background: #F3EDE1; color: #A8874F; display: flex; align-items: center; justify-content: center; font-size: 11.5px; font-weight: 600;">א״פ</div>
+                  <div style="flex: 1 1 auto; min-width: 0;">
+                    <div style="font-size: 13.5px; font-weight: 600;">אורית פרץ</div>
+                    <div style="font-size: 11.5px; color: #A9A59C; margin-top: 2px;">הפניה · ייעוץ נקבע למחר</div>
+                  </div>
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11.7c0 4.3-3.7 7.8-8.2 7.8-1.4 0-2.7-.3-3.9-.9L4 19.5l1-3.6a7.4 7.4 0 01-1.4-4.2C3.6 7.4 7.3 4 11.8 4S20 7.4 20 11.7z" stroke="#7E9A85" stroke-width="1.5" stroke-linejoin="round"></path></svg>
+                </div>
+              </div>
+            </div>
+
+            <div style="padding: 22px 22px 24px; border-radius: 18px; background: #FFFFFF; box-shadow: 0 1px 2px rgba(44,44,44,0.03), 0 14px 34px rgba(44,44,44,0.055);">
+              <h2 style="margin: 0 0 18px; font-size: 16px; font-weight: 600; letter-spacing: -0.3px;">חבילות בסיום</h2>
+              <div style="display: flex; flex-direction: column; gap: 18px;">
+                <div>
+                  <div style="display: flex; align-items: baseline; gap: 8px; font-size: 13.5px;">
+                    <span style="font-weight: 600;">רותם מירון</span>
+                    <span style="color: #A9A59C; font-size: 12px;">רגליים מלא</span>
+                    <span style="margin-inline-start: auto; font-family: 'Plus Jakarta Sans', sans-serif; color: #6E6A63; font-size: 12.5px;">9 / 10</span>
+                  </div>
+                  <div style="margin-top: 9px; height: 5px; border-radius: 5px; background: #F1EFEA; overflow: hidden;">
+                    <div style="width: 90%; height: 100%; border-radius: 5px; background: linear-gradient(90deg, #D9C49B, #B99A64);"></div>
+                  </div>
+                </div>
+                <div>
+                  <div style="display: flex; align-items: baseline; gap: 8px; font-size: 13.5px;">
+                    <span style="font-weight: 600;">נועה לוי</span>
+                    <span style="color: #A9A59C; font-size: 12px;">פנים מלא</span>
+                    <span style="margin-inline-start: auto; font-family: 'Plus Jakarta Sans', sans-serif; color: #6E6A63; font-size: 12.5px;">5 / 6</span>
+                  </div>
+                  <div style="margin-top: 9px; height: 5px; border-radius: 5px; background: #F1EFEA; overflow: hidden;">
+                    <div style="width: 83%; height: 100%; border-radius: 5px; background: linear-gradient(90deg, #D9C49B, #B99A64);"></div>
+                  </div>
+                </div>
+                <div>
+                  <div style="display: flex; align-items: baseline; gap: 8px; font-size: 13.5px;">
+                    <span style="font-weight: 600;">מאיה שפירא</span>
+                    <span style="color: #A9A59C; font-size: 12px;">קו ביקיני</span>
+                    <span style="margin-inline-start: auto; font-family: 'Plus Jakarta Sans', sans-serif; color: #6E6A63; font-size: 12.5px;">7 / 8</span>
+                  </div>
+                  <div style="margin-top: 9px; height: 5px; border-radius: 5px; background: #F1EFEA; overflow: hidden;">
+                    <div style="width: 87%; height: 100%; border-radius: 5px; background: linear-gradient(90deg, #D9C49B, #B99A64);"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isCalendar }}" hint-placeholder-val="{{ false }}">
+      <div style="padding: 6px 34px 40px;">
+        <div style="padding: 20px 22px 26px; border-radius: 18px; background: #FFFFFF; box-shadow: 0 1px 2px rgba(44,44,44,0.03), 0 14px 34px rgba(44,44,44,0.055);">
+          <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 22px;">
+            <div style="display: flex; align-items: center; gap: 4px;">
+              <div onClick="{{ prevWeek }}" style="width: 30px; height: 30px; border-radius: 9px; display: flex; align-items: center; justify-content: center; cursor: pointer;" style-hover="background: #FAF9F6"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M10 6l6 6-6 6" stroke="#6E6A63" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path></svg></div>
+              <div onClick="{{ nextWeek }}" style="width: 30px; height: 30px; border-radius: 9px; display: flex; align-items: center; justify-content: center; cursor: pointer;" style-hover="background: #FAF9F6"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M14 6l-6 6 6 6" stroke="#6E6A63" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path></svg></div>
+            </div>
+            <div style="font-size: 15px; font-weight: 600;">{{ headerLabel }}</div>
+            <div style="margin-inline-start: auto; display: flex; padding: 3px; border-radius: 11px; background: #F5F3EF;">
+              <div onClick="{{ setDay }}" style="padding: 6px 15px; border-radius: 9px; font-size: 13px; cursor: pointer; background: {{ dayBg }}; color: {{ dayFg }}; box-shadow: {{ dayShadow }};">יום</div>
+              <div onClick="{{ setWeek }}" style="padding: 6px 15px; border-radius: 9px; font-size: 13px; cursor: pointer; background: {{ weekBg }}; color: {{ weekFg }}; box-shadow: {{ weekShadow }};">שבוע</div>
+              <div onClick="{{ setMonth }}" style="padding: 6px 15px; border-radius: 9px; font-size: 13px; cursor: pointer; background: {{ monthBg }}; color: {{ monthFg }}; box-shadow: {{ monthShadow }};">חודש</div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 16px; font-size: 12px; color: #8A8781;">
+              <div style="display: flex; align-items: center; gap: 6px;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #C48B9F;"></span>לייזר</div>
+              <div style="display: flex; align-items: center; gap: 6px;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #7E9A85;"></span>פנים</div>
+              <div style="display: flex; align-items: center; gap: 6px;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #7D93AD;"></span>ייעוץ</div>
+            </div>
+          </div>
+
+          <sc-if value="{{ isWeekOrDay }}" hint-placeholder-val="{{ true }}">
+            <div style="display: grid; grid-template-columns: {{ gridCols }}; border-top: 1px solid rgba(44,44,44,0.06);">
+              <div></div>
+              <sc-for list="{{ days }}" as="day" hint-placeholder-count="6">
+                <div style="padding: 12px 0 14px; text-align: center; border-inline-start: 1px solid rgba(44,44,44,0.05);">
+                  <div style="font-size: 12px; color: #A9A59C;">{{ day.name }}</div>
+                  <div style="margin-top: 3px; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 16px; font-weight: 500; color: {{ day.numColor }};">{{ day.num }}</div>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="display: grid; grid-template-columns: {{ gridCols }}; position: relative;">
+              <div style="display: flex; flex-direction: column;">
+                <sc-for list="{{ hours }}" as="hour" hint-placeholder-count="11">
+                  <div style="height: 56px; font-size: 11.5px; color: #B4B0A8; font-family: 'Plus Jakarta Sans', sans-serif; padding-top: 1px;">{{ hour }}</div>
+                </sc-for>
+              </div>
+              <sc-for list="{{ days }}" as="day" hint-placeholder-count="6">
+                <div style="position: relative; border-inline-start: 1px solid rgba(44,44,44,0.05);">
+                  <sc-for list="{{ hours }}" as="hour" hint-placeholder-count="11">
+                    <div style="height: 56px; border-top: 1px solid rgba(44,44,44,0.045);"></div>
+                  </sc-for>
+                  <sc-for list="{{ day.slots }}" as="slot" hint-placeholder-count="0">
+                    <div onMouseEnter="{{ slot.enter }}" onMouseLeave="{{ leave }}" style="position: absolute; inset-inline: 4px; top: {{ slot.top }}; height: {{ slot.height }}; border-radius: 10px; padding: 7px 9px; background: {{ slot.tint }}; cursor: pointer; overflow: hidden;" style-hover="filter: brightness(0.97)">
+                      <div style="display: flex; gap: 7px; height: 100%;">
+                        <div style="width: 2.5px; border-radius: 3px; background: {{ slot.dot }};"></div>
+                        <div style="min-width: 0;">
+                          <div style="font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ slot.client }}</div>
+                          <div style="font-size: 11px; color: #6E6A63; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ slot.treatment }}</div>
+                        </div>
+                      </div>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isMonthView }}" hint-placeholder-val="{{ false }}">
+            <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border-top: 1px solid rgba(44,44,44,0.06);">
+              <sc-for list="{{ monthDayNames }}" as="dn" hint-placeholder-count="7">
+                <div style="padding: 12px 0 10px; text-align: center; font-size: 12px; color: #A9A59C; border-inline-start: 1px solid rgba(44,44,44,0.05);">{{ dn }}</div>
+              </sc-for>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr));">
+              <sc-for list="{{ monthCells }}" as="cell" hint-placeholder-count="42">
+                <div style="min-height: 76px; padding: 9px; border-inline-start: 1px solid rgba(44,44,44,0.05); border-top: 1px solid rgba(44,44,44,0.05); opacity: {{ cell.dim }};">
+                  <div style="font-family: 'Plus Jakarta Sans', sans-serif; font-size: 12.5px; font-weight: 500; color: {{ cell.numColor }}; width: 23px; height: 23px; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: {{ cell.numBg }};">{{ cell.num }}</div>
+                  <sc-if value="{{ cell.hasDots }}" hint-placeholder-val="{{ false }}">
+                    <div style="display: flex; gap: 4px; margin-top: 9px;">
+                      <sc-for list="{{ cell.dots }}" as="dot" hint-placeholder-count="0">
+                        <span style="width: 6px; height: 6px; border-radius: 50%; background: {{ dot }};"></span>
+                      </sc-for>
+                    </div>
+                  </sc-if>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isClientList }}" hint-placeholder-val="{{ false }}">
+      <div style="padding: 6px 34px 40px;">
+        <div style="padding: 8px 10px 14px; border-radius: 18px; background: #FFFFFF; box-shadow: 0 1px 2px rgba(44,44,44,0.03), 0 14px 34px rgba(44,44,44,0.055);">
+          <div style="display: grid; grid-template-columns: minmax(0,1.5fr) minmax(0,1fr) minmax(0,1.2fr) minmax(0,1.3fr) 110px 40px; gap: 14px; padding: 14px 18px 12px; font-size: 12px; color: #A9A59C;">
+            <div>לקוחה</div><div>טלפון</div><div>טיפול אחרון</div><div>חבילה פעילה</div><div>הכנסה</div><div></div>
+          </div>
+          <sc-for list="{{ clients }}" as="client" hint-placeholder-count="6">
+            <div onClick="{{ client.open }}" style="display: grid; grid-template-columns: minmax(0,1.5fr) minmax(0,1fr) minmax(0,1.2fr) minmax(0,1.3fr) 110px 40px; gap: 14px; align-items: center; padding: 13px 18px; border-radius: 14px; cursor: pointer; border-top: 1px solid rgba(44,44,44,0.045);" style-hover="background: #FAF9F6">
+              <div style="display: flex; align-items: center; gap: 11px; min-width: 0;">
+                <div style="flex: 0 0 auto; width: 34px; height: 34px; border-radius: 50%; background: {{ client.tint }}; color: {{ client.ink }}; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600;">{{ client.initials }}</div>
+                <div style="min-width: 0;">
+                  <div style="font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ client.name }}</div>
+                  <div style="font-size: 11.5px; color: #A9A59C; margin-top: 2px;">{{ client.since }}</div>
+                </div>
+              </div>
+              <div style="font-family: 'Plus Jakarta Sans', sans-serif; font-size: 13px; color: #6E6A63; direction: ltr; text-align: right;">{{ client.phone }}</div>
+              <div style="font-size: 13px; color: #6E6A63;">{{ client.last }}</div>
+              <div>
+                <div style="font-size: 12.5px; color: #6E6A63;">{{ client.package }}</div>
+                <div style="margin-top: 7px; height: 4px; border-radius: 4px; background: #F1EFEA; overflow: hidden;">
+                  <div style="width: {{ client.progress }}; height: 100%; border-radius: 4px; background: linear-gradient(90deg, #D9C49B, #B99A64);"></div>
+                </div>
+              </div>
+              <div style="font-family: 'Plus Jakarta Sans', sans-serif; font-size: 13.5px; font-weight: 500;">{{ client.revenue }}</div>
+              <div style="display: flex; justify-content: center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M14 6l-6 6 6 6" stroke="#C7C3BB" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path></svg></div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isClientProfile }}" hint-placeholder-val="{{ false }}">
+      <div style="padding: 6px 34px 40px; display: grid; grid-template-columns: minmax(0, 1.9fr) minmax(0, 1fr); gap: 18px; align-items: start;">
+        <div style="display: flex; flex-direction: column; gap: 18px;">
+          <div style="padding: 24px 26px; border-radius: 18px; background: #FFFFFF; box-shadow: 0 1px 2px rgba(44,44,44,0.03), 0 14px 34px rgba(44,44,44,0.055);">
+            <div onClick="{{ backToList }}" style="display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: #A9A59C; cursor: pointer; margin-bottom: 18px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M10 6l6 6-6 6" stroke="#A9A59C" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+              חזרה לרשימת הלקוחות
+            </div>
+            <div style="display: flex; align-items: center; gap: 16px;">
+              <div style="width: 60px; height: 60px; border-radius: 50%; background: {{ profile.tint }}; color: {{ profile.ink }}; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 600;">{{ profile.initials }}</div>
+              <div style="flex: 1 1 auto; min-width: 0;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <h2 style="margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.4px;">{{ profile.name }}</h2>
+                  <span style="font-size: 11.5px; padding: 3px 10px; border-radius: 20px; background: #F3EDE1; color: #A8874F;">{{ profile.tier }}</span>
+                </div>
+                <div style="margin-top: 6px; display: flex; align-items: center; gap: 14px; font-size: 13px; color: #8A8781;">
+                  <span style="font-family: 'Plus Jakarta Sans', sans-serif; direction: ltr;">{{ profile.phone }}</span>
+                  <span>{{ profile.email }}</span>
+                </div>
+              </div>
+              <div style="display: flex; gap: 8px;">
+                <div style="display: flex; align-items: center; gap: 7px; height: 36px; padding: 0 14px; border-radius: 10px; background: #FAF9F6; font-size: 13px; cursor: pointer;" style-hover="background: #F2F0EB">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M20 11.7c0 4.3-3.7 7.8-8.2 7.8-1.4 0-2.7-.3-3.9-.9L4 19.5l1-3.6a7.4 7.4 0 01-1.4-4.2C3.6 7.4 7.3 4 11.8 4S20 7.4 20 11.7z" stroke="#7E9A85" stroke-width="1.5" stroke-linejoin="round"></path></svg>
+                  ווטסאפ
+                </div>
+                <div style="display: flex; align-items: center; gap: 7px; height: 36px; padding: 0 14px; border-radius: 10px; background: #2C2C2C; color: #FFFFFF; font-size: 13px; cursor: pointer;" style-hover="background: #3D3B37">זימון תור</div>
+              </div>
+            </div>
+
+            <div style="margin-top: 26px; display: flex; gap: 26px; border-bottom: 1px solid rgba(44,44,44,0.06);">
+              <div onClick="{{ tabDetails }}" style="padding-bottom: 12px; font-size: 14px; cursor: pointer; color: {{ tabDetailsFg }}; font-weight: {{ tabDetailsWeight }}; box-shadow: {{ tabDetailsLine }};">פרטים</div>
+              <div onClick="{{ tabHistory }}" style="padding-bottom: 12px; font-size: 14px; cursor: pointer; color: {{ tabHistoryFg }}; font-weight: {{ tabHistoryWeight }}; box-shadow: {{ tabHistoryLine }};">היסטוריית טיפולים</div>
+              <div onClick="{{ tabDocs }}" style="padding-bottom: 12px; font-size: 14px; cursor: pointer; color: {{ tabDocsFg }}; font-weight: {{ tabDocsWeight }}; box-shadow: {{ tabDocsLine }};">מסמכים</div>
+            </div>
+
+            <sc-if value="{{ onDetails }}" hint-placeholder-val="{{ true }}">
+              <div style="padding-top: 24px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px 34px;">
+                <div><div style="font-size: 12px; color: #A9A59C;">כתובת</div><div style="margin-top: 5px; font-size: 14px;">{{ profile.address }}</div></div>
+                <div><div style="font-size: 12px; color: #A9A59C;">תאריך הצטרפות</div><div style="margin-top: 5px; font-size: 14px;">{{ profile.joined }}</div></div>
+                <div><div style="font-size: 12px; color: #A9A59C;">סוג עור (פיצפטריק)</div><div style="margin-top: 5px; font-size: 14px;">{{ profile.skin }}</div></div>
+                <div><div style="font-size: 12px; color: #A9A59C;">הצהרת בריאות</div><div style="margin-top: 5px; font-size: 14px; color: #6F8A76;">{{ profile.health }}</div></div>
+                <div><div style="font-size: 12px; color: #A9A59C;">מכשיר מועדף</div><div style="margin-top: 5px; font-size: 14px;">{{ profile.machine }}</div></div>
+                <div><div style="font-size: 12px; color: #A9A59C;">רגישויות והערות</div><div style="margin-top: 5px; font-size: 14px; text-wrap: pretty;">{{ profile.notes }}</div></div>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ onHistory }}" hint-placeholder-val="{{ false }}">
+              <div style="padding-top: 14px;">
+                <sc-for list="{{ profile.history }}" as="row" hint-placeholder-count="4">
+                  <div style="display: grid; grid-template-columns: 96px minmax(0,1fr) 120px 90px; gap: 14px; align-items: center; padding: 14px 4px; border-bottom: 1px solid rgba(44,44,44,0.045);">
+                    <div style="font-family: 'Plus Jakarta Sans', sans-serif; font-size: 13px; color: #6E6A63;">{{ row.date }}</div>
+                    <div style="font-size: 14px;">{{ row.treatment }}</div>
+                    <div style="font-size: 12.5px; color: #8A8781;">{{ row.staff }}</div>
+                    <div style="font-family: 'Plus Jakarta Sans', sans-serif; font-size: 13.5px; font-weight: 500; text-align: start;">{{ row.price }}</div>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ onDocs }}" hint-placeholder-val="{{ false }}">
+              <div style="padding-top: 20px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px;">
+                <sc-for list="{{ profile.docs }}" as="doc" hint-placeholder-count="3">
+                  <div style="padding: 16px; border-radius: 14px; background: #FAF9F6; cursor: pointer;" style-hover="background: #F5F3EF">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M6 3.5h8l4.5 4.5v12.5H6z" stroke="#2C2C2C" stroke-width="1.5" stroke-linejoin="round"></path><path d="M14 3.5V8h4.5" stroke="#C9AC79" stroke-width="1.5" stroke-linejoin="round"></path></svg>
+                    <div style="margin-top: 12px; font-size: 13.5px; font-weight: 600;">{{ doc.name }}</div>
+                    <div style="margin-top: 4px; font-size: 11.5px; color: #A9A59C;">{{ doc.meta }}</div>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 18px;">
+          <div style="padding: 22px; border-radius: 18px; background: #FFFFFF; box-shadow: 0 1px 2px rgba(44,44,44,0.03), 0 14px 34px rgba(44,44,44,0.055);">
+            <h3 style="margin: 0 0 4px; font-size: 15px; font-weight: 600;">חבילה פעילה</h3>
+            <div style="font-size: 12.5px; color: #A9A59C;">{{ profile.packageName }}</div>
+            <div style="margin-top: 20px; display: flex; align-items: flex-end; gap: 8px;">
+              <span style="font-family: 'Plus Jakarta Sans', sans-serif; font-size: 30px; font-weight: 500; letter-spacing: -1px; line-height: 1;">{{ profile.done }}</span>
+              <span style="font-family: 'Plus Jakarta Sans', sans-serif; font-size: 15px; color: #A9A59C; padding-bottom: 3px;">{{ profile.of }}</span>
+              <span style="margin-inline-start: auto; font-size: 12.5px; color: #8A8781; padding-bottom: 4px;">מפגשים הושלמו</span>
+            </div>
+            <div style="margin-top: 14px; height: 8px; border-radius: 8px; background: #F1EFEA; overflow: hidden; display: flex; gap: 2px;">
+              <div style="width: {{ profile.progress }}; height: 100%; border-radius: 8px; background: linear-gradient(90deg, #DFCBA5, #B99A64);"></div>
+            </div>
+            <div style="margin-top: 12px; font-size: 12.5px; color: #A9A59C;">{{ profile.nextSession }}</div>
+          </div>
+
+          <div style="padding: 22px; border-radius: 18px; background: #FFFFFF; box-shadow: 0 1px 2px rgba(44,44,44,0.03), 0 14px 34px rgba(44,44,44,0.055);">
+            <h3 style="margin: 0 0 16px; font-size: 15px; font-weight: 600;">סיכום כספי</h3>
+            <div style="display: flex; flex-direction: column; gap: 13px; font-size: 13.5px;">
+              <div style="display: flex;"><span style="color: #8A8781;">הכנסה מצטברת</span><span style="margin-inline-start: auto; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 500;">{{ profile.revenue }}</span></div>
+              <div style="display: flex;"><span style="color: #8A8781;">חשבוניות פתוחות</span><span style="margin-inline-start: auto; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 500;">{{ profile.open }}</span></div>
+              <div style="display: flex;"><span style="color: #8A8781;">ביקור אחרון</span><span style="margin-inline-start: auto;">{{ profile.lastVisit }}</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isLeads }}" hint-placeholder-val="{{ false }}">
+      <div style="padding: 6px 34px 40px;">
+        <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; align-items: start;">
+          <sc-for list="{{ columns }}" as="col" hint-placeholder-count="4">
+            <div onDragOver="{{ col.over }}" onDrop="{{ col.drop }}" style="padding: 16px 14px 18px; border-radius: 18px; background: {{ col.bg }}; min-height: 420px; transition: background .18s;">
+              <div style="display: flex; align-items: center; gap: 8px; padding: 0 4px 14px;">
+                <span style="width: 7px; height: 7px; border-radius: 50%; background: {{ col.dot }};"></span>
+                <span style="font-size: 13.5px; font-weight: 600;">{{ col.title }}</span>
+                <span style="margin-inline-start: auto; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 12px; color: #A9A59C;">{{ col.count }}</span>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 10px;">
+                <sc-for list="{{ col.cards }}" as="card" hint-placeholder-count="2">
+                  <div draggable="true" onDragStart="{{ card.start }}" onDragEnd="{{ card.end }}" style="padding: 15px 16px; border-radius: 14px; background: #FFFFFF; box-shadow: 0 1px 2px rgba(44,44,44,0.03), 0 8px 22px rgba(44,44,44,0.05); cursor: grab; opacity: {{ card.opacity }};" style-hover="box-shadow: 0 2px 4px rgba(44,44,44,0.04), 0 14px 30px rgba(44,44,44,0.08)">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                      <div style="width: 30px; height: 30px; border-radius: 50%; background: {{ card.tint }}; color: {{ card.ink }}; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600;">{{ card.initials }}</div>
+                      <div style="min-width: 0;">
+                        <div style="font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ card.name }}</div>
+                        <div style="font-family: 'Plus Jakarta Sans', sans-serif; font-size: 11.5px; color: #A9A59C; direction: ltr; text-align: right; margin-top: 2px;">{{ card.phone }}</div>
+                      </div>
+                    </div>
+                    <div style="margin-top: 12px; font-size: 12.5px; color: #6E6A63; text-wrap: pretty;">{{ card.note }}</div>
+                    <div style="margin-top: 13px; display: flex; align-items: center; gap: 8px;">
+                      <span style="font-size: 11px; padding: 3px 9px; border-radius: 20px; background: {{ card.tint }}; color: {{ card.ink }};">{{ card.source }}</span>
+                      <span style="margin-inline-start: auto; font-size: 11px; color: #B4B0A8;">{{ card.age }}</span>
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M20 11.7c0 4.3-3.7 7.8-8.2 7.8-1.4 0-2.7-.3-3.9-.9L4 19.5l1-3.6a7.4 7.4 0 01-1.4-4.2C3.6 7.4 7.3 4 11.8 4S20 7.4 20 11.7z" stroke="#7E9A85" stroke-width="1.5" stroke-linejoin="round"></path></svg>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+  </main>
+
+  <sc-if value="{{ tip }}" hint-placeholder-val="{{ false }}">
+    <div style="position: fixed; z-index: 40; top: {{ tipTop }}; left: {{ tipLeft }}; width: 246px; padding: 16px 18px; border-radius: 15px; background: #FFFFFF; box-shadow: 0 2px 6px rgba(44,44,44,0.05), 0 18px 44px rgba(44,44,44,0.14); pointer-events: none; animation: omFade .16s ease-out;">
+      <div style="display: flex; align-items: center; gap: 9px;">
+        <span style="width: 7px; height: 7px; border-radius: 50%; background: {{ tip.dot }};"></span>
+        <span style="font-size: 14.5px; font-weight: 600;">{{ tip.client }}</span>
+      </div>
+      <div style="margin-top: 9px; font-size: 12.5px; color: #6E6A63;">{{ tip.treatment }}</div>
+      <div style="margin-top: 3px; font-size: 12.5px; color: #A9A59C;">{{ tip.when }}</div>
+      <div style="margin-top: 13px; padding-top: 12px; border-top: 1px solid rgba(44,44,44,0.06); display: flex; align-items: center; gap: 9px;">
+        <span style="font-size: 12px; color: #A8874F;">{{ tip.package }}</span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style="margin-inline-start: auto;"><path d="M20 11.7c0 4.3-3.7 7.8-8.2 7.8-1.4 0-2.7-.3-3.9-.9L4 19.5l1-3.6a7.4 7.4 0 01-1.4-4.2C3.6 7.4 7.3 4 11.8 4S20 7.4 20 11.7z" stroke="#7E9A85" stroke-width="1.5" stroke-linejoin="round"></path></svg>
+      </div>
+    </div>
+  </sc-if>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;defaultScreen&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;dashboard&quot;,&quot;calendar&quot;,&quot;clients&quot;,&quot;leads&quot;],&quot;default&quot;:&quot;dashboard&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;תצוגה&quot;},&quot;emptyToday&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;תצוגה&quot;},&quot;sidebarCollapsed&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;תצוגה&quot;}}">
+const GOLD = '#B99A64', GOLD_BAR = '#C9AC79';
+const TINTS = {
+  pink: { bg: '#F8EFF1', dot: '#C48B9F', ink: '#A9788A' },
+  sage: { bg: '#EFF3EE', dot: '#7E9A85', ink: '#6F8A76' },
+  blue: { bg: '#EDF1F6', dot: '#7D93AD', ink: '#6C8399' },
+  gold: { bg: '#F5F0E6', dot: '#C9AC79', ink: '#A8874F' },
+};
+
+const TIMELINE = [
+  { time: '09:00', duration: '45 דק׳', client: 'רותם מירון', treatment: 'רגליים מלא', resource: 'חדר 1 · אלכסנדריט · דנה', pkg: 'מפגש 9 מתוך 10', status: 'מאושר', tone: 'pink' },
+  { time: '10:30', duration: '20 דק׳', client: 'רותם כהן', treatment: 'בית שחי', resource: 'חדר 1 · אלכסנדריט · דנה', pkg: 'מפגש 4 מתוך 6', status: 'מאושר', tone: 'pink' },
+  { time: '11:30', duration: '30 דק׳', client: 'נועה לוי', treatment: 'פנים מלא', resource: 'חדר 2 · סופרנו · ליאת', pkg: 'מפגש 5 מתוך 6', status: 'מאושר', tone: 'sage' },
+  { time: '14:00', duration: '30 דק׳', client: 'מאיה שפירא', treatment: 'קו ביקיני', resource: 'חדר 1 · אלכסנדריט · דנה', pkg: 'מפגש 7 מתוך 8', status: 'ממתין', tone: 'pink' },
+  { time: '15:30', duration: '40 דק׳', client: 'יעל אברהמי', treatment: 'חצי רגליים', resource: 'חדר 2 · סופרנו · ליאת', pkg: '', status: 'מאושר', tone: 'pink' },
+  { time: '17:00', duration: '25 דק׳', client: 'שירה דהן', treatment: 'ייעוץ ראשוני', resource: 'חדר ייעוץ · דנה', pkg: 'פגישה ראשונה', status: 'ממתין', tone: 'blue' },
+];
+
+const WEEK = [
+  { name: 'ראשון', num: '23', slots: [
+    { s: '09:30', d: 45, client: 'נועה לוי', treatment: 'פנים מלא', tone: 'sage', pkg: 'מפגש 5 מתוך 6' },
+    { s: '12:00', d: 30, client: 'מאיה שפירא', treatment: 'קו ביקיני', tone: 'pink', pkg: 'מפגש 6 מתוך 8' },
+    { s: '16:00', d: 60, client: 'יעל אברהמי', treatment: 'רגליים מלא', tone: 'pink', pkg: 'מפגש 2 מתוך 10' },
+  ] },
+  { name: 'שני', num: '24', slots: [
+    { s: '10:00', d: 25, client: 'רותם כהן', treatment: 'בית שחי', tone: 'pink', pkg: 'מפגש 3 מתוך 6' },
+    { s: '14:30', d: 45, client: 'שירה דהן', treatment: 'ייעוץ ראשוני', tone: 'blue', pkg: 'פגישה ראשונה' },
+  ] },
+  { name: 'שלישי', num: '25', slots: [
+    { s: '09:00', d: 40, client: 'רותם מירון', treatment: 'חצי רגליים', tone: 'pink', pkg: 'מפגש 8 מתוך 10' },
+    { s: '11:30', d: 30, client: 'נועה לוי', treatment: 'שפם', tone: 'pink', pkg: 'מפגש 4 מתוך 6' },
+    { s: '15:00', d: 45, client: 'ליאור בן דוד', treatment: 'פנים מלא', tone: 'sage', pkg: 'מפגש 1 מתוך 6' },
+  ] },
+  { name: 'רביעי', num: '26', today: true, slots: [
+    { s: '09:00', d: 45, client: 'רותם מירון', treatment: 'רגליים מלא', tone: 'pink', pkg: 'מפגש 9 מתוך 10' },
+    { s: '10:30', d: 20, client: 'רותם כהן', treatment: 'בית שחי', tone: 'pink', pkg: 'מפגש 4 מתוך 6' },
+    { s: '11:30', d: 30, client: 'נועה לוי', treatment: 'פנים מלא', tone: 'sage', pkg: 'מפגש 5 מתוך 6' },
+    { s: '14:00', d: 30, client: 'מאיה שפירא', treatment: 'קו ביקיני', tone: 'pink', pkg: 'מפגש 7 מתוך 8' },
+    { s: '15:30', d: 40, client: 'יעל אברהמי', treatment: 'חצי רגליים', tone: 'pink', pkg: 'ללא חבילה' },
+    { s: '17:00', d: 25, client: 'שירה דהן', treatment: 'ייעוץ ראשוני', tone: 'blue', pkg: 'פגישה ראשונה' },
+  ] },
+  { name: 'חמישי', num: '27', slots: [
+    { s: '10:00', d: 60, client: 'מאיה שפירא', treatment: 'רגליים מלא', tone: 'pink', pkg: 'מפגש 3 מתוך 10' },
+    { s: '13:00', d: 45, client: 'תמר גולן', treatment: 'פנים מלא', tone: 'sage', pkg: 'מפגש 1 מתוך 6' },
+    { s: '17:30', d: 25, client: 'אורית פרץ', treatment: 'ייעוץ ראשוני', tone: 'blue', pkg: 'פגישה ראשונה' },
+  ] },
+  { name: 'שישי', num: '28', slots: [
+    { s: '09:30', d: 30, client: 'יעל אברהמי', treatment: 'שפם', tone: 'pink', pkg: 'מפגש 5 מתוך 6' },
+    { s: '11:00', d: 40, client: 'רותם כהן', treatment: 'חצי רגליים', tone: 'pink', pkg: 'מפגש 2 מתוך 10' },
+  ] },
+];
+
+const CLIENTS = [
+  { name: 'רותם מירון', initials: 'ר״מ', phone: '052-123-4567', since: 'לקוחה מ־2024', last: 'רגליים מלא · 12.8', pkg: 'רגליים מלא 9/10', progress: '90%', revenue: '₪ 4,200', tone: 'pink',
+    email: 'rotem.miron@example.com', address: 'הרצל 15, תל אביב', joined: 'מרץ 2024', skin: 'III', machine: 'אלכסנדריט 755nm', tier: 'לקוחת חבילה', notes: 'רגישות קלה באזור הקרסול, ירידה בעוצמה ב־10%.', open: '₪ 0', lastVisit: '12 באוגוסט 2026',
+    history: [ { date: '12.08.2026', treatment: 'רגליים מלא', staff: 'דנה כספי', price: '₪ 420' }, { date: '15.07.2026', treatment: 'רגליים מלא', staff: 'דנה כספי', price: '₪ 420' }, { date: '18.06.2026', treatment: 'בית שחי', staff: 'ליאת אבידן', price: '₪ 120' }, { date: '20.05.2026', treatment: 'רגליים מלא', staff: 'דנה כספי', price: '₪ 420' } ] },
+  { name: 'רותם כהן', initials: 'ר״כ', phone: '053-234-5678', since: 'לקוחה מ־2025', last: 'בית שחי · 20.8', pkg: 'בית שחי 4/6', progress: '66%', revenue: '₪ 1,860', tone: 'blue' },
+  { name: 'נועה לוי', initials: 'נ״ל', phone: '054-345-6789', since: 'לקוחה מ־2023', last: 'פנים מלא · 24.8', pkg: 'פנים מלא 5/6', progress: '83%', revenue: '₪ 6,340', tone: 'sage' },
+  { name: 'מאיה שפירא', initials: 'מ״ש', phone: '050-456-7890', since: 'לקוחה מ־2025', last: 'קו ביקיני · 22.8', pkg: 'קו ביקיני 7/8', progress: '87%', revenue: '₪ 2,750', tone: 'gold' },
+  { name: 'יעל אברהמי', initials: 'י״א', phone: '052-567-8901', since: 'לקוחה מ־2026', last: 'חצי רגליים · 19.8', pkg: 'ללא חבילה פעילה', progress: '0%', revenue: '₪ 980', tone: 'pink' },
+  { name: 'שירה דהן', initials: 'ש״ד', phone: '054-678-9012', since: 'נרשמה החודש', last: 'טרם ביקרה', pkg: 'ממתינה לייעוץ', progress: '0%', revenue: '₪ 0', tone: 'blue' },
+];
+
+const LEADS = [
+  { id: 1, name: 'דנה אלמוג', phone: '052-111-2222', source: 'אינסטגרם', note: 'פנתה דרך סטורי, מתעניינת בהסרת שיער רגליים.', age: 'לפני 4 ימים', tone: 'pink', stage: 'new' },
+  { id: 2, name: 'תמר גולן', phone: '054-333-4444', source: 'גוגל', note: 'חיפשה "לייזר תל אביב", השאירה טלפון בלבד.', age: 'לפני יומיים', tone: 'blue', stage: 'new' },
+  { id: 3, name: 'הילה נחום', phone: '052-555-6666', source: 'מהרחוב', note: 'נכנסה לקליניקה, ביקשה מחירון חבילות.', age: 'אתמול', tone: 'gold', stage: 'new' },
+  { id: 4, name: 'ליאור בן דוד', phone: '053-222-3333', source: 'פייסבוק', note: 'מעוניינת בחבילת 10 מפגשים, ממתינה להצעה.', age: 'לפני 6 ימים', tone: 'blue', stage: 'contacted' },
+  { id: 5, name: 'אורית פרץ', phone: '050-444-5555', source: 'הפניה', note: 'הופנתה על ידי נועה לוי, שוחחנו בטלפון.', age: 'לפני 3 ימים', tone: 'gold', stage: 'contacted' },
+  { id: 6, name: 'שירה דהן', phone: '054-678-9012', source: 'הפניה', note: 'ייעוץ ראשוני נקבע להיום 17:00.', age: 'לפני שבוע', tone: 'sage', stage: 'booked' },
+  { id: 7, name: 'סיון ברק', phone: '054-666-7777', source: 'אינסטגרם', note: 'רכשה חבילת בית שחי, הפכה ללקוחה.', age: 'לפני שבועיים', tone: 'sage', stage: 'converted' },
+];
+
+const STAGES = [
+  { key: 'new', title: 'ליד חדש', dot: '#C48B9F', bg: '#F6F4F0' },
+  { key: 'contacted', title: 'נוצר קשר', dot: '#7D93AD', bg: '#F6F4F0' },
+  { key: 'booked', title: 'ייעוץ נקבע', dot: '#C9AC79', bg: '#F6F4F0' },
+  { key: 'converted', title: 'הומר ללקוחה', dot: '#7E9A85', bg: '#F6F4F0' },
+];
+
+const START_HOUR = 9;
+const HOURS = ['09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00'];
+const PX_PER_HOUR = 56;
+const HEBREW_MONTHS = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
+const DAY_NAMES = ['ראשון','שני','שלישי','רביעי','חמישי','שישי'];
+const MONTH_DAY_NAMES = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
+const TODAY = new Date(2026, 7, 26);
+const DAY_IDX = 3;
+
+function sameDay(a, b) {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+function weekStartDate(offset) {
+  const wd = TODAY.getDay();
+  return new Date(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate() - wd + offset * 7);
+}
+function buildMonthCells(monthOffset) {
+  const ref = new Date(TODAY.getFullYear(), TODAY.getMonth() + monthOffset, 1);
+  const month = ref.getMonth();
+  const gridStart = new Date(ref.getFullYear(), month, 1 - ref.getDay());
+  const cells = [];
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + i);
+    const inMonth = d.getMonth() === month;
+    const isToday = sameDay(d, TODAY);
+    let dots = [];
+    if (d.getFullYear() === 2026 && d.getMonth() === 7 && d.getDate() >= 23 && d.getDate() <= 28) {
+      const wd = WEEK[d.getDate() - 23];
+      if (wd) dots = wd.slots.slice(0, 3).map((sl) => TINTS[sl.tone].dot);
+    }
+    cells.push({
+      num: d.getDate(),
+      dim: inMonth ? 1 : 0.32,
+      numColor: isToday ? '#FFFFFF' : '#2C2C2C',
+      numBg: isToday ? GOLD_BAR : 'transparent',
+      hasDots: dots.length > 0,
+      dots,
+    });
+  }
+  return cells;
+}
+
+class Component extends DCLogic {
+  state = {
+    screen: this.props.defaultScreen || 'dashboard',
+    collapsed: !!this.props.sidebarCollapsed,
+    view: 'week',
+    weekOffset: 0,
+    monthOffset: 0,
+    client: null,
+    tab: 'details',
+    tip: null,
+    leads: LEADS,
+    dragId: null,
+    dragOver: null,
+  };
+
+  go = (screen) => () => this.setState({ screen, client: null, tip: null });
+
+  minutesFrom = (hhmm) => {
+    const [h, m] = hhmm.split(':').map(Number);
+    return (h - START_HOUR) * 60 + m;
+  };
+
+  renderVals() {
+    const s = this.state;
+    const empty = !!this.props.emptyToday;
+    const screen = s.screen;
+    const titles = {
+      dashboard: ['ברוכה הבאה, דנה', 'לוח בקרה'],
+      calendar: ['ניהול זימונים', 'יומן הקליניקה'],
+      clients: ['מרכז לקוחות', 'לקוחות'],
+      leads: ['ניהול לידים', 'צינור לידים'],
+    };
+    const nav = (key) => ({
+      bg: screen === key ? '#F5F0E6' : 'transparent',
+      bar: screen === key ? GOLD_BAR : 'transparent',
+      fg: screen === key ? '#2C2C2C' : '#6E6A63',
+      weight: screen === key ? 600 : 400,
+    });
+    const d = nav('dashboard'), c = nav('calendar'), cl = nav('clients'), l = nav('leads');
+
+    const seg = (on) => ({
+      bg: on ? '#FFFFFF' : 'transparent',
+      fg: on ? '#2C2C2C' : '#8A8781',
+      shadow: on ? '0 1px 3px rgba(44,44,44,0.08)' : 'none',
+    });
+    const dayS = seg(s.view === 'day'), weekS = seg(s.view === 'week'), monthS = seg(s.view === 'month');
+
+    const tabStyle = (on) => ({
+      fg: on ? '#2C2C2C' : '#8A8781',
+      weight: on ? 600 : 400,
+      line: on ? `inset 0 -2px 0 0 ${GOLD}` : 'none',
+    });
+    const tD = tabStyle(s.tab === 'details'), tH = tabStyle(s.tab === 'history'), tDoc = tabStyle(s.tab === 'docs');
+
+    const wStart = weekStartDate(s.weekOffset);
+    const weekDates = DAY_NAMES.map((name, i) => ({
+      name, date: new Date(wStart.getFullYear(), wStart.getMonth(), wStart.getDate() + i),
+    }));
+    const visibleIdx = s.view === 'day' ? [DAY_IDX] : [0, 1, 2, 3, 4, 5];
+    const days = visibleIdx.map((i) => {
+      const wd = weekDates[i];
+      const isToday = sameDay(wd.date, TODAY);
+      const sourceDay = WEEK[i];
+      return {
+        name: wd.name,
+        num: wd.date.getDate(),
+        numColor: isToday ? GOLD : '#2C2C2C',
+        slots: sourceDay.slots.map((slot) => {
+          const tone = TINTS[slot.tone];
+          return {
+            client: slot.client,
+            treatment: slot.treatment,
+            tint: tone.bg,
+            dot: tone.dot,
+            top: `${(this.minutesFrom(slot.s) / 60) * PX_PER_HOUR}px`,
+            height: `${Math.max(34, (slot.d / 60) * PX_PER_HOUR - 4)}px`,
+            enter: (e) => {
+              const r = e.currentTarget.getBoundingClientRect();
+              this.setState({ tip: {
+                client: slot.client, treatment: slot.treatment, dot: tone.dot,
+                package: slot.pkg, when: `${wd.name} · ${slot.s} · ${slot.d} דקות`,
+                top: Math.max(12, r.top - 8), left: Math.max(12, r.left - 258),
+              } });
+            },
+          };
+        }),
+      };
+    });
+    const gridCols = `54px repeat(${visibleIdx.length}, minmax(0, 1fr))`;
+    const isMonthView = s.view === 'month';
+
+    let weekLabel;
+    if (s.view === 'day') {
+      const d = weekDates[DAY_IDX].date;
+      weekLabel = `${d.getDate()} ב${HEBREW_MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+    } else {
+      const rs = weekDates[0].date, re = weekDates[5].date;
+      weekLabel = rs.getMonth() === re.getMonth()
+        ? `${rs.getDate()} – ${re.getDate()} ב${HEBREW_MONTHS[rs.getMonth()]} ${rs.getFullYear()}`
+        : `${rs.getDate()} ב${HEBREW_MONTHS[rs.getMonth()]} – ${re.getDate()} ב${HEBREW_MONTHS[re.getMonth()]} ${re.getFullYear()}`;
+    }
+    const monthRef = new Date(TODAY.getFullYear(), TODAY.getMonth() + s.monthOffset, 1);
+    const monthLabel = `${HEBREW_MONTHS[monthRef.getMonth()]} ${monthRef.getFullYear()}`;
+    const headerLabel = isMonthView ? monthLabel : weekLabel;
+    const monthCells = isMonthView ? buildMonthCells(s.monthOffset) : [];
+
+    const clients = CLIENTS.map((row, i) => ({
+      ...row, package: row.pkg, tint: TINTS[row.tone].bg, ink: TINTS[row.tone].ink,
+      open: () => this.setState({ screen: 'clients', client: i, tab: 'details' }),
+    }));
+
+    const base = s.client === null ? null : CLIENTS[s.client];
+    const profile = base && {
+      name: base.name, initials: base.initials, phone: base.phone, email: base.email || 'לא הוזן',
+      tint: TINTS[base.tone].bg, ink: TINTS[base.tone].ink, tier: base.tier || 'לקוחה',
+      address: base.address || 'לא הוזנה', joined: base.joined || '2025', skin: base.skin || 'III',
+      health: 'חתומה · 12.08.2026', machine: base.machine || 'אלכסנדריט 755nm',
+      notes: base.notes || 'אין הערות מיוחדות.',
+      packageName: base.pkg, done: (base.pkg.match(/(\d+)\//) || [, '0'])[1],
+      of: `מתוך ${(base.pkg.match(/\/(\d+)/) || [, '0'])[1]}`,
+      progress: base.progress, nextSession: 'המפגש הבא: 9 בספטמבר, 09:00',
+      revenue: base.revenue, open: base.open || '₪ 0', lastVisit: base.lastVisit || '—',
+      history: base.history || [], docs: [
+        { name: 'הצהרת בריאות', meta: 'PDF · 12.08.2026' },
+        { name: 'הסכמה מדעת', meta: 'PDF · 12.08.2026' },
+        { name: 'תמונות לפני ואחרי', meta: '6 קבצים · 15.07.2026' },
+      ],
+    };
+
+    const columns = STAGES.map((stage) => {
+      const cards = s.leads.filter((x) => x.stage === stage.key);
+      return {
+        title: stage.title, dot: stage.dot, count: cards.length,
+        bg: s.dragOver === stage.key ? '#F1EEE7' : stage.bg,
+        over: (e) => { e.preventDefault(); if (s.dragOver !== stage.key) this.setState({ dragOver: stage.key }); },
+        drop: (e) => {
+          e.preventDefault();
+          const id = s.dragId;
+          this.setState((prev) => ({
+            leads: prev.leads.map((x) => (x.id === id ? { ...x, stage: stage.key } : x)),
+            dragId: null, dragOver: null,
+          }));
+        },
+        cards: cards.map((card) => ({
+          ...card,
+          initials: card.name.split(' ').map((w) => w[0]).slice(0, 2).join('״'),
+          tint: TINTS[card.tone].bg, ink: TINTS[card.tone].ink,
+          opacity: s.dragId === card.id ? 0.45 : 1,
+          start: (e) => { if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'; this.setState({ dragId: card.id }); },
+          end: () => this.setState({ dragId: null, dragOver: null }),
+        })),
+      };
+    });
+
+    return {
+      sidebarWidth: s.collapsed ? '78px' : '248px',
+      labelOpacity: s.collapsed ? 0 : 1,
+      chevronFlip: s.collapsed ? 'scaleX(-1)' : 'none',
+      toggleSidebar: () => this.setState({ collapsed: !s.collapsed }),
+      goDashboard: this.go('dashboard'), goCalendar: this.go('calendar'),
+      goClients: this.go('clients'), goLeads: this.go('leads'),
+      navBgDashboard: d.bg, navBarDashboard: d.bar, navFgDashboard: d.fg, navWeightDashboard: d.weight,
+      navBgCalendar: c.bg, navBarCalendar: c.bar, navFgCalendar: c.fg, navWeightCalendar: c.weight,
+      navBgClients: cl.bg, navBarClients: cl.bar, navFgClients: cl.fg, navWeightClients: cl.weight,
+      navBgLeads: l.bg, navBarLeads: l.bar, navFgLeads: l.fg, navWeightLeads: l.weight,
+
+      crumb: titles[screen][0],
+      pageTitle: s.client !== null ? 'כרטיס לקוחה' : titles[screen][1],
+      isDashboard: screen === 'dashboard',
+      isCalendar: screen === 'calendar',
+      isClientList: screen === 'clients' && s.client === null,
+      isClientProfile: screen === 'clients' && s.client !== null,
+      isLeads: screen === 'leads',
+
+      hasToday: !empty,
+      isEmptyToday: empty,
+      timeline: TIMELINE.map((t) => ({
+        time: t.time, duration: t.duration, client: t.client, treatment: t.treatment,
+        resource: t.resource, package: t.pkg, status: t.status,
+        statusColor: t.status === 'מאושר' ? '#6F8A76' : '#A9A59C',
+        tint: TINTS[t.tone].bg, dot: TINTS[t.tone].dot,
+      })),
+
+      hours: HOURS,
+      days,
+      gridCols,
+      isWeekOrDay: !isMonthView,
+      isMonthView,
+      monthDayNames: MONTH_DAY_NAMES,
+      monthCells,
+      headerLabel,
+      prevWeek: () => this.setState(isMonthView ? { monthOffset: s.monthOffset - 1 } : { weekOffset: s.weekOffset - 1 }),
+      nextWeek: () => this.setState(isMonthView ? { monthOffset: s.monthOffset + 1 } : { weekOffset: s.weekOffset + 1 }),
+      setDay: () => this.setState({ view: 'day' }),
+      setWeek: () => this.setState({ view: 'week' }),
+      setMonth: () => this.setState({ view: 'month' }),
+      dayBg: dayS.bg, dayFg: dayS.fg, dayShadow: dayS.shadow,
+      weekBg: weekS.bg, weekFg: weekS.fg, weekShadow: weekS.shadow,
+      monthBg: monthS.bg, monthFg: monthS.fg, monthShadow: monthS.shadow,
+
+      tip: s.tip,
+      tipTop: s.tip ? `${s.tip.top}px` : '0px',
+      tipLeft: s.tip ? `${s.tip.left}px` : '0px',
+      leave: () => this.setState({ tip: null }),
+
+      clients,
+      profile,
+      backToList: () => this.setState({ client: null }),
+      tabDetails: () => this.setState({ tab: 'details' }),
+      tabHistory: () => this.setState({ tab: 'history' }),
+      tabDocs: () => this.setState({ tab: 'docs' }),
+      onDetails: s.tab === 'details', onHistory: s.tab === 'history', onDocs: s.tab === 'docs',
+      tabDetailsFg: tD.fg, tabDetailsWeight: tD.weight, tabDetailsLine: tD.line,
+      tabHistoryFg: tH.fg, tabHistoryWeight: tH.weight, tabHistoryLine: tH.line,
+      tabDocsFg: tDoc.fg, tabDocsWeight: tDoc.weight, tabDocsLine: tDoc.line,
+
+      columns,
+    };
+  }
+}
+
+</script>
+</body>
+</html>

@@ -1,117 +1,69 @@
 # ============================================================
 # managers/appointment_treatment_manager.py
-# מנהל "טיפול מרוכב" - כמה טיפולים באותו תור.
+# מנהל "טיפול מרוכב" (כמה טיפולים באותו תור) + מנוע הזימון החכם.
 #
-# ------------------------------------------------------------
-# הערה חשובה על היוצא-דופן הזה בפרויקט:
-# זהו הקובץ היחיד שכן כותב SQL חדש, כולל יצירת טבלה חדשה
-# (appointment_treatments). זו חריגה מודעת ומאושרת - כדי לאפשר
-# לדנה לקבוע תור עם כמה טיפולים יחד (למשל: שפם + סנטר באותו
-# ביקור), כשהמחיר והזמן הכולל מחושבים אוטומטית ומשפיעים נכון
-# על בדיקת ההתנגשויות והשעות הפנויות (הלוז).
+# גרסת ORM (שלב 3 של הריפקטור). זהו הקובץ שמחזיק את כל לוגיקת
+# בדיקת ההתנגשויות של המערכת - הבחירה המקורית (מפרויקט האמצע)
+# הייתה לרכז כאן את כל חישוב ה"טווח שתור תופס", וזה עדיין הבית
+# הנכון לאילוץ התלת-כיווני החדש (חדר + מכשיר + עובדת), כי הוא
+# כבר יודע לחשב נכון את משך הזמן הכולל גם לתור רגיל וגם למרוכב.
 #
-# הקובץ הזה לא נוגע ב-managers/appointment_manager.py המקורי,
-# וגם לא ב-schema.sql / database.py - כדי ש-main.py והתפריט
-# הקיים ימשיכו לעבוד בדיוק כמו היום, בלי שום שינוי. טבלת
-# appointments המקורית עדיין שומרת treatment_id יחיד (הטיפול
-# ה"ראשי" - הראשון שנבחר), בדיוק כמו קודם. הטבלה החדשה כאן היא
-# תוספת בלבד מעליה, לשימוש ה-Web בלבד.
-# ------------------------------------------------------------
+# האילוץ התלת-כיווני: תור חדש מתנגש עם תור קיים אחר *רק* אם הם
+# חולקים משאב משותף (אותו חדר, או אותו מכשיר, או אותה עובדת)
+# וגם הזמנים חופפים. תור בחדר אחר עם עובדת אחרת יכול להתקיים
+# באותה שעה בדיוק - זו בדיוק הנקודה של קליניקה עם כמה עובדות.
+# משאב שלא צוין (None) לא נבדק כלל, כדי לתמוך במעבר הדרגתי.
+# ============================================================
 
 from datetime import datetime, timedelta
 
-from database import get_connection
+from db import get_session
+from models import Appointment, AppointmentTreatment, Treatment
 from managers.treatment_manager import TreatmentManager
+from managers.staff_schedule_manager import StaffScheduleManager
 
 
 class AppointmentTreatmentManager:
     """
-    מנהל הקישור בין תור לכמה טיפולים (many-to-many).
-    בונה מעל טבלת appointments הקיימת, בלי לשנות אותה.
+    מנהל הקישור בין תור לכמה טיפולים (many-to-many), ומנוע בדיקת
+    ההתנגשויות המלא (שעות פעילות + משאבים + זמינות עובדת).
     """
 
     def __init__(self):
-        # שימוש חוזר במנהל הטיפולים הקיים - כל שליפת טיפול בודד
-        # עוברת דרכו, לא כותבים שוב שאילתת SELECT על treatments
         self.treatment_manager = TreatmentManager()
+        self.staff_schedule_manager = StaffScheduleManager()
+
+    @property
+    def session(self):
+        return get_session()
 
     def ensure_table(self):
         """
-        יוצר את טבלת appointment_treatments אם היא עוד לא קיימת.
-        בטוח להריץ שוב ושוב (IF NOT EXISTS) - נקרא פעם אחת
-        מ-app.py בעת עליית השרת, בדיוק כמו initialize_database().
-
-        ON DELETE CASCADE - אם תור נמחק (דרך delete_appointment
-        הרגיל שב-AppointmentManager), השורות שלו כאן נמחקות
-        אוטומטית ע"י SQLite עצמו, בלי לגעת בפונקציית המחיקה ההיא.
+        שומר לתאימות לאחור בלבד: הטבלה עצמה נוצרת היום דרך
+        db.init_orm_tables() / migrations/004_orm_refactor.py.
+        קריאה חוזרת כאן בטוחה (create_all הוא idempotent).
         """
-        connection = get_connection()
-        connection.execute("""
-            CREATE TABLE IF NOT EXISTS appointment_treatments (
-                appointment_id     INTEGER NOT NULL,
-                treatment_id       INTEGER NOT NULL,
-
-                PRIMARY KEY (appointment_id, treatment_id),
-                FOREIGN KEY (appointment_id) REFERENCES appointments(appointment_id)
-                    ON DELETE CASCADE,
-                FOREIGN KEY (treatment_id) REFERENCES treatments(treatment_id)
-            )
-        """)
-        connection.commit()
-        connection.close()
+        from db import engine
+        from models import Base
+        Base.metadata.create_all(engine, tables=[AppointmentTreatment.__table__])
 
     def set_treatments_for_appointment(self, appointment_id, treatment_ids):
-        """
-        קובע את רשימת הטיפולים המלאה של תור נתון: מוחק את הרשימה
-        הישנה וכותב את החדשה, בטרנזקציה אחת. נקרא בכל הוספה/עדכון
-        של תור דרך ה-Web, כך שהרשימה תמיד מדויקת ועדכנית.
-        """
-        connection = get_connection()
-        cursor = connection.cursor()
-
-        try:
-            cursor.execute(
-                "DELETE FROM appointment_treatments WHERE appointment_id = ?",
-                (appointment_id,)
-            )
-
-            for treatment_id in treatment_ids:
-                cursor.execute("""
-                    INSERT INTO appointment_treatments (appointment_id, treatment_id)
-                    VALUES (?, ?)
-                """, (appointment_id, treatment_id))
-
-            connection.commit()
-
-        except Exception:
-            connection.rollback()
-            raise
-
-        finally:
-            connection.close()
+        """מוחק את רשימת הטיפולים הישנה של תור וכותב את החדשה, בטרנזקציה אחת."""
+        session = self.session
+        session.query(AppointmentTreatment).filter_by(appointment_id=appointment_id).delete()
+        for treatment_id in treatment_ids:
+            session.add(AppointmentTreatment(appointment_id=appointment_id, treatment_id=treatment_id))
+        session.commit()
 
     def get_treatment_ids_for_appointment(self, appointment_id):
-        """מחזיר רשימת מזהי טיפולים (מספרים) המקושרים לתור נתון"""
-        connection = get_connection()
-        cursor = connection.cursor()
-
-        cursor.execute(
-            "SELECT treatment_id FROM appointment_treatments WHERE appointment_id = ?",
-            (appointment_id,)
+        rows = (
+            self.session.query(AppointmentTreatment.treatment_id)
+            .filter_by(appointment_id=appointment_id)
+            .all()
         )
-        rows = cursor.fetchall()
-        connection.close()
-
         return [row[0] for row in rows]
 
     def get_treatments_for_appointment(self, appointment_id, fallback_treatment_id=None):
-        """
-        מחזיר רשימת אובייקטי Treatment מלאים לתור.
-
-        אם אין רשומות בטבלת הקישור (למשל תור שנוצר דרך main.py,
-        לפני שהתכונה הזאת הייתה קיימת, או תור "רגיל" עם טיפול
-        יחיד) - חוזרים לטיפול הראשי הבודד של אותו תור.
-        """
         treatment_ids = self.get_treatment_ids_for_appointment(appointment_id)
 
         if not treatment_ids and fallback_treatment_id is not None:
@@ -126,12 +78,6 @@ class AppointmentTreatmentManager:
         return treatments
 
     def calculate_combo_totals(self, treatment_ids):
-        """
-        מחשב מחיר כולל ומשך כולל (בדקות) לרשימת מזהי טיפולים.
-        זהו הלב של התכונה - "עלות ומשך שמחושבים לפי מכלול הטיפולים".
-        משתמש ב-TreatmentManager הקיים לשליפת כל טיפול - אין כאן
-        שאילתת SELECT חדשה על טבלת treatments.
-        """
         total_price = 0
         total_duration = 0
 
@@ -144,10 +90,6 @@ class AppointmentTreatmentManager:
         return total_price, total_duration
 
     def get_appointment_total_duration(self, appointment_id, fallback_treatment_id):
-        """
-        משך הזמן האמיתי שתור נתון תופס בלוז - סכום כל הטיפולים
-        המקושרים אליו (או משך הטיפול הראשי אם אין קישורים).
-        """
         treatment_ids = self.get_treatment_ids_for_appointment(appointment_id)
 
         if not treatment_ids:
@@ -157,17 +99,25 @@ class AppointmentTreatmentManager:
         return total_duration
 
     def check_combo_conflict(self, appointment_date, appointment_time,
-                              treatment_ids, exclude_appointment_id=None):
+                              treatment_ids, exclude_appointment_id=None,
+                              client_id=None, room_id=None, machine_id=None,
+                              staff_user_id=None,
+                              work_start="09:00", work_end="18:00"):
         """
-        גרסה "מודעת-שילוב" של AppointmentManager.check_conflict:
-        באותו אלגוריתם בדיוק (חפיפת טווחי זמן), אבל במקום להסתמך
-        על משך הטיפול הבודד של כל תור קיים, שולפת לכל תור קיים
-        באותו יום את משך הזמן האמיתי שלו (כולל אם גם הוא טיפול
-        מרוכב) - ובודקת חפיפה מול הזמן הכולל של הבקשה החדשה.
+        הבדיקה המלאה לפני קביעת/עדכון תור:
+          1. שעות הפעילות
+          2. זמינות העובדת (תבנית שבועית + חופשות), אם צוינה
+          3. התנגשות משאבים (לקוח/חדר/מכשיר/עובדת) עם תורים אחרים
+             חופפים בזמן, רק מול תורים שחולקים משאב בפועל
 
-        מחזירה (has_conflict, message) - אותו פורמט בדיוק כמו
-        AppointmentManager.check_conflict, כדי שהצד הלקוח יוכל
-        להתייחס לשתי הפונקציות באותה צורה.
+        client_id אינו אופציונלי מבחינה עסקית כמו שאר המשאבים -
+        לקוחה לא יכולה להיות בשני תורים בו-זמנית, גם אם עדיין לא
+        שויכו חדר/מכשיר/עובדת לאף אחד מהתורים. לכן, בשונה מ-
+        room_id/machine_id/staff_user_id, ה-None כאן אמור לקרות
+        רק בקריאות בדיקה כלליות (למשל "יש שעות פנויות היום בכלל"),
+        לא כשבאמת שומרים תור קונקרטי ללקוחה.
+
+        מחזירה (has_conflict, message).
         """
         _, new_duration = self.calculate_combo_totals(treatment_ids)
 
@@ -176,51 +126,67 @@ class AppointmentTreatmentManager:
         )
         new_end = new_start + timedelta(minutes=new_duration)
 
-        connection = get_connection()
-        cursor = connection.cursor()
+        day_start = datetime.strptime(f"{appointment_date} {work_start}", "%Y-%m-%d %H:%M")
+        day_end = datetime.strptime(f"{appointment_date} {work_end}", "%Y-%m-%d %H:%M")
 
-        cursor.execute("""
-            SELECT a.appointment_id, a.appointment_time, a.treatment_id, c.full_name
-            FROM appointments a
-            JOIN clients c ON a.client_id = c.client_id
-            WHERE a.appointment_date = ?
-              AND a.status != 'cancelled'
-        """, (appointment_date,))
-        rows = cursor.fetchall()
-        connection.close()
+        if new_start < day_start or new_end > day_end:
+            return True, f"השעה המבוקשת מחוץ לשעות הפעילות ({work_start}-{work_end})"
 
-        for row in rows:
-            existing_id, existing_time, existing_primary_treatment_id, client_name = row
+        if staff_user_id is not None:
+            is_available, reason = self.staff_schedule_manager.is_staff_available(
+                staff_user_id, appointment_date, appointment_time, new_end.strftime("%H:%M")
+            )
+            if not is_available:
+                return True, reason
 
-            # בעדכון - מדלגים על התור שאנחנו מעדכנים (כמו במנהל המקורי)
-            if exclude_appointment_id is not None and existing_id == exclude_appointment_id:
+        query = self.session.query(Appointment).filter(
+            Appointment.appointment_date == appointment_date,
+            Appointment.status != "cancelled",
+        )
+        if exclude_appointment_id is not None:
+            query = query.filter(Appointment.appointment_id != exclude_appointment_id)
+
+        for existing in query.all():
+            shares_client = client_id is not None and existing.client_id == client_id
+            shares_room = room_id is not None and existing.room_id == room_id
+            shares_machine = machine_id is not None and existing.machine_id == machine_id
+            shares_staff = staff_user_id is not None and existing.staff_user_id == staff_user_id
+
+            if not (shares_client or shares_room or shares_machine or shares_staff):
+                # אין משאב משותף - אין דרך שהתורים "יתנגשו" זה בזה,
+                # גם אם הזמנים חופפים (לקוחות/חדרים/עובדות שונים לגמרי)
                 continue
 
             existing_duration = self.get_appointment_total_duration(
-                existing_id, existing_primary_treatment_id
+                existing.appointment_id, existing.treatment_id
             )
             existing_start = datetime.strptime(
-                f"{appointment_date} {existing_time}", "%Y-%m-%d %H:%M"
+                f"{appointment_date} {existing.appointment_time}", "%Y-%m-%d %H:%M"
             )
             existing_end = existing_start + timedelta(minutes=existing_duration)
 
             if new_start < existing_end and existing_start < new_end:
+                if shares_client:
+                    resource_phrase = "ללקוחה כבר יש תור חופף"
+                elif shares_room:
+                    resource_phrase = "החדר כבר תפוס"
+                elif shares_machine:
+                    resource_phrase = "המכשיר כבר תפוס"
+                else:
+                    resource_phrase = "העובדת כבר תפוסה"
                 message = (
-                    f"התנגשות עם תור #{existing_id} של {client_name} "
-                    f"בשעה {existing_time} "
-                    f"(מסתיים ב-{existing_end.strftime('%H:%M')})"
+                    f"{resource_phrase} בשעה {existing.appointment_time} "
+                    f"(תור #{existing.appointment_id}, מסתיים ב-{existing_end.strftime('%H:%M')})"
                 )
                 return True, message
 
         return False, None
 
     def get_combo_available_slots(self, appointment_date, treatment_ids,
+                                   client_id=None, room_id=None, machine_id=None,
+                                   staff_user_id=None,
                                    work_start="09:00", work_end="18:00"):
-        """
-        שעות פנויות ליום נתון עבור שילוב טיפולים - אותו רעיון כמו
-        AppointmentManager.get_available_slots, אבל לפי משך הזמן
-        הכולל של כל הטיפולים שנבחרו יחד.
-        """
+        """שעות פנויות ליום נתון, מודעות למשאבים אם סופקו."""
         _, duration = self.calculate_combo_totals(treatment_ids)
 
         day_start = datetime.strptime(f"{appointment_date} {work_start}", "%Y-%m-%d %H:%M")
@@ -233,7 +199,10 @@ class AppointmentTreatmentManager:
             time_string = current.strftime("%H:%M")
 
             has_conflict, _ = self.check_combo_conflict(
-                appointment_date, time_string, treatment_ids
+                appointment_date, time_string, treatment_ids,
+                client_id=client_id, room_id=room_id, machine_id=machine_id,
+                staff_user_id=staff_user_id,
+                work_start=work_start, work_end=work_end,
             )
 
             if not has_conflict:

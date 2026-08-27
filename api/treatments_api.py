@@ -12,7 +12,7 @@ from flask import Blueprint, jsonify, request
 from entities.treatment import Treatment
 from managers.treatment_manager import TreatmentManager
 
-from utils.validators import validate_positive_number
+from utils.validators import validate_positive_number, validate_positive_integer
 
 from api.helpers import json_error, run_db_operation, treatment_to_dict
 from auth.decorators import get_current_user
@@ -51,7 +51,7 @@ def _validate_treatment_fields(treatment_name, body_area, price, duration_minute
     if not is_valid:
         return False, error_message, "price"
 
-    is_valid, error_message = validate_positive_number(duration_minutes, "משך הטיפול")
+    is_valid, error_message = validate_positive_integer(duration_minutes, "משך הטיפול")
     if not is_valid:
         return False, error_message, "duration_minutes"
 

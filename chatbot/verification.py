@@ -2,12 +2,11 @@
 # chatbot/verification.py
 # שער האימות של הצ'אטבוט.
 #
-# זו נקודת המעבר היחידה במערכת בין שיחה לא מאומתת
-# לבין מידע אישי. כל שליפת נתונים עוברת דרך כאן.
-#
-# הסיבה לריכוז: פיזור בדיקות בכל handler בנפרד יוצר
-# מצב שבו מספיק לשכוח בדיקה אחת כדי לדלוף מידע.
-# עם שער יחיד, אי אפשר לשכוח.
+# Release 2 (Principle 1): הלוגיקה עצמה עברה ל-identity/verification.py,
+# המשותפת גם לפורטל. הקובץ הזה נשאר בתור מתאם דק שמנהל את מצב
+# השיחה (ConversationState) - id_attempts/otp_attempts/lock/state -
+# שזה עניין ספציפי לצ'אטבוט ולא לזהות עצמה. שום קוד קורא (chatbot/flows.py)
+# לא צריך להשתנות: אותם שמות פונקציות, אותה חתימה, אותה התנהגות.
 #
 # מבנה האימות: שני שלבים עצמאיים.
 #   שלב א - תעודת זהות, מוכיח ידע
@@ -17,7 +16,18 @@
 
 from config import Config
 from managers.client_manager import ClientManager
-from utils.otp import create_and_send_otp, verify_otp
+
+from identity.verification import (
+    RESULT_OK,
+    RESULT_WRONG,
+    RESULT_LOCKED,
+    RESULT_NO_DATA,
+    RESULT_SEND_FAILED,
+    PURPOSE_CHATBOT_IDENTITY,
+    check_national_id,
+    send_otp,
+    confirm_otp,
+)
 
 from chatbot.state import (
     STATE_AWAITING_ID,
@@ -30,22 +40,11 @@ from chatbot.state import (
 client_manager = ClientManager()
 
 
-# ============================================================
-# תוצאות אפשריות של ניסיון אימות
-# ============================================================
-
-RESULT_OK = "ok"
-RESULT_WRONG = "wrong"
-RESULT_LOCKED = "locked"
-RESULT_NO_DATA = "no_data"
-RESULT_SEND_FAILED = "send_failed"
-
-
 def verify_identity_document(conversation, national_id):
     """
     שלב אימות ראשון: תעודת זהות.
 
-    מחזיר את אחת הקבועים שלמעלה. אינו מחזיר שום פרט
+    מחזיר את אחד הקבועים שלמעלה. אינו מחזיר שום פרט
     על הלקוחה, גם לא בהצלחה.
     """
     if conversation.state == STATE_LOCKED:
@@ -54,9 +53,7 @@ def verify_identity_document(conversation, national_id):
     if conversation.candidate_client_id is None:
         return RESULT_NO_DATA
 
-    is_match = client_manager.verify_client_national_id(
-        conversation.candidate_client_id, national_id
-    )
+    is_match = check_national_id(conversation.candidate_client_id, national_id)
 
     if is_match:
         conversation.id_verified = True
@@ -90,18 +87,7 @@ def send_verification_code(conversation):
     if not conversation.id_verified:
         return RESULT_NO_DATA, None
 
-    client = client_manager.get_client_by_id(conversation.candidate_client_id)
-    if client is None or not client.phone:
-        return RESULT_NO_DATA, None
-
-    success, info = create_and_send_otp(
-        client.client_id, client.phone, channel="phone"
-    )
-
-    if not success:
-        return RESULT_SEND_FAILED, None
-
-    return RESULT_OK, info["masked_destination"]
+    return send_otp(conversation.candidate_client_id, purpose=PURPOSE_CHATBOT_IDENTITY)
 
 
 def verify_code(conversation, code):
@@ -117,17 +103,17 @@ def verify_code(conversation, code):
     if not conversation.id_verified:
         return RESULT_NO_DATA
 
-    is_valid, reason = verify_otp(conversation.candidate_client_id, code)
+    result, _reason = confirm_otp(conversation.candidate_client_id, code,
+                                   purpose=PURPOSE_CHATBOT_IDENTITY)
 
-    if is_valid:
+    if result == RESULT_OK:
         conversation.otp_verified = True
         conversation.state = STATE_VERIFIED
         return RESULT_OK
 
     conversation.otp_attempts += 1
 
-    if reason == "too_many_attempts" or \
-            conversation.otp_attempts >= Config.MAX_VERIFICATION_ATTEMPTS:
+    if result == RESULT_LOCKED or conversation.otp_attempts >= Config.MAX_VERIFICATION_ATTEMPTS:
         conversation.lock()
         return RESULT_LOCKED
 

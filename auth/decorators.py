@@ -1,25 +1,31 @@
 # ============================================================
 # auth/decorators.py
-# אכיפת הרשאות על נקודות הקצה.
+# אכיפת הרשאות על נקודות הקצה - גרסת JWT.
 #
 # זו הנקודה היחידה במערכת שמחליטה אם בקשה מותרת.
 # אין ואסור שיהיו בדיקות הרשאה מפוזרות בתוך ה-routes.
 #
-# שימוש:
+# שינוי מהגרסה הקודמת (session cookie): המשתמשת המחוברת מזוהה
+# עכשיו מתוך כותרת "Authorization: Bearer <access_token>" ולא
+# מעוגיית session. זו הדרישה הבסיסית של ארכיטקטורה headless -
+# frontend נפרד (React/Next) לא יכול לשמור session בצד השרת.
+#
+# שימוש (ללא שינוי מבחינת מי שכותב route):
 #   @require_login
 #   @require_permission(CLIENT_DELETE)
 # ============================================================
 
 from functools import wraps
 
-from flask import session, jsonify, g
+from flask import request, jsonify, g
 
-from managers.user_manager import UserManager
+from db import get_session
+from models import User
+from auth.jwt_utils import decode_token, TokenError, TOKEN_TYPE_ACCESS
 from auth.permissions import get_permissions_for_role
 from managers.audit_manager import AuditManager, ACTION_PERMISSION_DENIED
 
 
-user_manager = UserManager()
 audit_manager = AuditManager()
 
 
@@ -29,39 +35,47 @@ def get_client_ip():
     מאחורי proxy כמו nginx, הכתובת האמיתית מגיעה בכותרת
     X-Forwarded-For ולא בשדה remote_addr.
     """
-    from flask import request
-
     forwarded = request.headers.get("X-Forwarded-For")
     if forwarded:
         return forwarded.split(",")[0].strip()
     return request.remote_addr
 
-# מפתח מזהה המשתמש בתוך העוגייה החתומה
-SESSION_USER_KEY = "user_id"
+
+def _extract_bearer_token():
+    """שולף את הטוקן מכותרת Authorization, בפורמט 'Bearer <token>'."""
+    header = request.headers.get("Authorization", "")
+    if not header.startswith("Bearer "):
+        return None
+    return header[len("Bearer "):].strip()
 
 
 def get_current_user():
     """
-    מחזיר את המשתמש המחובר, או None אם אין כזה.
+    מחזיר את המשתמשת המחוברת (לפי ה-access token בכותרת), או None.
 
-    המשתמש נשלף מחדש מהמסד בכל בקשה ולא נשמר בעוגייה.
-    כך שינוי הרשאות או השבתת עובדת נכנסים לתוקף מיידית,
-    ולא רק אחרי שהיא תתנתק.
-
-    התוצאה נשמרת ב-g למשך הבקשה הנוכחית בלבד, כדי שלא
-    נפנה למסד כמה פעמים באותה בקשה.
+    המשתמשת נשלפת מחדש מה-DB בכל בקשה ולא נשמרת בטוקן עצמו -
+    כך השבתת עובדת נכנסת לתוקף מיידית, גם אם ה-access token
+    שלה עדיין "בתוקף" מבחינת זמן. התוצאה נשמרת ב-g למשך הבקשה
+    הנוכחית בלבד, כדי שלא נפנה למסד כמה פעמים באותה בקשה.
     """
     if hasattr(g, "current_user"):
         return g.current_user
 
-    user_id = session.get(SESSION_USER_KEY)
-    if user_id is None:
+    token = _extract_bearer_token()
+    if token is None:
         g.current_user = None
         return None
 
-    user = user_manager.get_user_by_id(user_id)
+    try:
+        payload = decode_token(token, expected_type=TOKEN_TYPE_ACCESS)
+    except TokenError:
+        g.current_user = None
+        return None
 
-    # משתמשת שהושבתה מאבדת גישה מיידית, גם אם העוגייה תקפה
+    session = get_session()
+    user = session.get(User, int(payload["sub"]))
+
+    # משתמשת שהושבתה מאבדת גישה מיידית, גם אם הטוקן חתום ותקף
     if user is not None and not user.is_active:
         user = None
 
@@ -70,10 +84,7 @@ def get_current_user():
 
 
 def require_login(view_function):
-    """
-    חוסם גישה למי שאינו מחובר.
-    מוחזר קוד 401 ולא הפניה, כי הפונקציות כאן מחזירות JSON.
-    """
+    """חוסם גישה למי שאינו מחובר (טוקן חסר/פג/לא תקף/משתמשת מושבתת)."""
     @wraps(view_function)
     def wrapper(*args, **kwargs):
         user = get_current_user()
@@ -126,7 +137,7 @@ def require_admin(view_function):
         if user is None:
             return jsonify({"error": "נדרשת התחברות למערכת"}), 401
 
-        if not user.is_admin():
+        if user.role != "admin":
             return jsonify({"error": "אין לך הרשאה לבצע פעולה זו"}), 403
 
         return view_function(*args, **kwargs)
@@ -134,19 +145,13 @@ def require_admin(view_function):
     return wrapper
 
 
-def login_user(user):
+def bump_token_version(user):
     """
-    שומר את המשתמש בעוגיית ה-session.
-    נשמר רק המזהה. כל שאר הפרטים נשלפים מהמסד בכל בקשה.
+    מעלה את token_version של המשתמשת ב-1, ובכך מבטלת מיידית כל
+    refresh token קודם שהונפק לה (logout יזום, שינוי סיסמה, או
+    השבתה). לא דורש טבלת session/blacklist נפרדת - ראו auth/jwt_utils.py.
     """
-    session.clear()
-    session[SESSION_USER_KEY] = user.user_id
-    session.permanent = True
-    g.current_user = user
-
-
-def logout_user():
-    """מנקה את ה-session לחלוטין."""
-    session.clear()
-    if hasattr(g, "current_user"):
-        g.current_user = None
+    session = get_session()
+    user.token_version = (user.token_version or 0) + 1
+    session.add(user)
+    session.commit()

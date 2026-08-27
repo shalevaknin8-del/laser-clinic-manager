@@ -49,6 +49,17 @@ REPORT_REVENUE = "report.revenue"
 USER_MANAGE = "user.manage"
 AUDIT_VIEW = "audit.view"
 
+# משאבי זימון (שלב 3: Smart Scheduling) - הקמת חדרים/מכשירים
+# וקביעת שעות עבודה של עובדת הן החלטות ניהוליות, לא עבודה יומיומית
+ROOM_MANAGE = "room.manage"
+MACHINE_MANAGE = "machine.manage"
+STAFF_SCHEDULE_MANAGE = "staff_schedule.manage"
+
+# חבילות טיפולים - הגדרת הקטלוג (מחיר, מספר מפגשים) שמורה למנהלת,
+# אבל מכירת חבילה קיימת ללקוחה היא פעולה יומיומית כמו הפקת חשבונית
+PACKAGE_MANAGE = "package.manage"
+PACKAGE_SELL = "package.sell"
+
 
 # ============================================================
 # מפת התפקידים
@@ -78,6 +89,9 @@ EMPLOYEE_PERMISSIONS = {
 
     LEAD_VIEW,
     LEAD_EDIT,
+
+    # מכירת חבילה קיימת ללקוחה - כמו הפקת חשבונית, לא שינוי קטלוג
+    PACKAGE_SELL,
 }
 
 # למנהלת יש את כל היכולות במערכת
@@ -89,6 +103,10 @@ ADMIN_PERMISSIONS = EMPLOYEE_PERMISSIONS | {
     REPORT_REVENUE,
     USER_MANAGE,
     AUDIT_VIEW,
+    ROOM_MANAGE,
+    MACHINE_MANAGE,
+    STAFF_SCHEDULE_MANAGE,
+    PACKAGE_MANAGE,
 }
 
 

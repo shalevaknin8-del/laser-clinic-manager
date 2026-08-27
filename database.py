@@ -23,6 +23,12 @@ if not DATABASE_PATH.is_absolute():
 # גם בהתקנה נקייה בלי הכנה ידנית
 DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
 
+# תיקיית קבצי הצהרות הבריאות - לצד קובץ ה-DB בדיוק (מחוץ לתיקיית
+# הפרויקט בפרודקשן, ראו DEPLOY.md), ולא תחת static/. כך הקבצים
+# לעולם לא נגישים כ-URL ציבורי ישיר, ולא נדרסים ב-git pull.
+HEALTH_DECLARATIONS_DIR = DATABASE_PATH.parent / "health_declarations"
+HEALTH_DECLARATIONS_DIR.mkdir(parents=True, exist_ok=True)
+
 # נתיב לקובץ הסכמה
 SCHEMA_PATH = BASE_DIR / "schema.sql"
 

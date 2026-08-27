@@ -46,18 +46,17 @@ def validate_name(name):
 
 def validate_phone(phone):
     """
-    בודק שמספר טלפון ישראלי תקין.
-    מקבל פורמטים: 0501234567 או 050-1234567
+    בודק שמספר טלפון נייד ישראלי תקין.
+
+    מקבל כל פורמט שניתן לנרמל למספר נייד תקין (ראו normalize_phone):
+    0501234567, 050-1234567, 050-123-4567, וגם קידומת בינלאומית +972.
+    זו אותה בדיקת תקינות בדיוק שמשמשת בכניסת עובדות למערכת - חובה
+    שהיא תהיה זהה, כי הבוט שולח קוד אימות למספר הזה בפועל.
     """
     if phone is None or phone.strip() == "":
         return False, "מספר הטלפון לא יכול להיות ריק"
 
-    clean_phone = phone.strip()
-
-    # התבנית: מתחיל ב-0, אחריו 1-2 ספרות, מקף אופציונלי, ואז 7 ספרות
-    pattern = r"^0\d{1,2}-?\d{7}$"
-
-    if not re.match(pattern, clean_phone):
+    if normalize_phone(phone) is None:
         return False, "מספר טלפון לא תקין - נדרש פורמט כמו 0501234567"
 
     return True, None
@@ -157,6 +156,32 @@ def validate_positive_number(value, field_name="הערך"):
 
     if number <= 0:
         return False, f"{field_name} חייב להיות גדול מאפס"
+
+    return True, None
+
+
+def validate_positive_integer(value, field_name="הערך"):
+    """
+    בודק שהערך הוא מספר שלם חיובי.
+
+    בשונה מ-validate_positive_number, כאן ערך כמו "10.5" נדחה.
+    נחוץ לשדות שמייצגים דקות (duration_minutes) - מספר שלם
+    שממשיך להיות מומר בקוד הקורא עם int(), ולכן חייב להיבדק
+    כשלם כבר כאן ולא רק כחיובי.
+    """
+    if value is None or str(value).strip() == "":
+        return False, f"{field_name} לא יכול להיות ריק"
+
+    try:
+        number = float(value)
+    except ValueError:
+        return False, f"{field_name} חייב להיות מספר"
+
+    if number <= 0:
+        return False, f"{field_name} חייב להיות גדול מאפס"
+
+    if number != int(number):
+        return False, f"{field_name} חייב להיות מספר שלם"
 
     return True, None
 

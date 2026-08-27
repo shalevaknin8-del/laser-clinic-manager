@@ -6,18 +6,23 @@
 # אחרי שהלקוחה תעבור אימות זהות מוצלח.
 # ============================================================
 
-from flask import Blueprint, jsonify, request
+import uuid
+from pathlib import Path
+
+from flask import Blueprint, jsonify, request, send_file
 
 from entities.client import Client
 from managers.client_manager import ClientManager
 from managers.appointment_manager import AppointmentManager
 from managers.invoice_manager import InvoiceManager
+from managers.package_manager import PackageManager
 
-from utils.validators import validate_name, validate_phone, validate_email
+from utils.validators import validate_name, validate_phone, validate_email, normalize_phone
 from auth.decorators import get_current_user
 from auth.decorators import require_permission
 from auth.permissions import CLIENT_DELETE
 from flask import jsonify as _jsonify
+from database import HEALTH_DECLARATIONS_DIR
 
 from api.helpers import (
     json_error,
@@ -28,6 +33,11 @@ from api.helpers import (
 )
 
 
+# סיומות קבצים מותרות להעלאת הצהרת בריאות - תמונה סרוקה או PDF בלבד
+ALLOWED_HEALTH_DECLARATION_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png"}
+MAX_HEALTH_DECLARATION_SIZE_BYTES = 10 * 1024 * 1024  # 10MB - מספיק לסריקה/תמונה בודדת
+
+
 clients_bp = Blueprint("clients", __name__, url_prefix="/api/clients")
 
 client_manager = ClientManager()
@@ -35,6 +45,7 @@ client_manager = ClientManager()
 # נחוצים להרכבת מסך ההיסטוריה של הלקוח
 appointment_manager = AppointmentManager()
 invoice_manager = InvoiceManager()
+package_manager = PackageManager()
 
 @clients_bp.before_request
 def require_authenticated_user():
@@ -45,9 +56,44 @@ def require_authenticated_user():
 
 @clients_bp.route("", methods=["GET"])
 def get_clients():
-    """מחזיר את כל הלקוחות."""
+    """
+    מחזיר את כל הלקוחות, כולל סיכום הכנסה וחבילה פעילה לכל אחת.
+
+    הסיכום מחושב בשליפה אחת של כל החשבוניות/החבילות ולא N+1
+    שאילתות ללקוח - אותה גישה בדיוק כמו api/dashboard_api.py.
+    ב-200 לקוחות (גודל הקליניקה היעד) זו עדיין שליפה זולה.
+    """
     clients = client_manager.get_all_clients()
-    return jsonify([client_to_dict(client) for client in clients])
+
+    revenue_by_client = {}
+    for invoice in invoice_manager.get_all_invoices(include_cancelled=False):
+        revenue_by_client[invoice.client_id] = revenue_by_client.get(invoice.client_id, 0) + invoice.amount
+
+    package_by_client = {}
+    for client_package in package_manager.get_all_usable_client_packages():
+        # אם יש כמה חבילות פעילות, מציגים את האחרונה שנרכשה
+        existing = package_by_client.get(client_package.client_id)
+        if existing is None or client_package.purchased_at > existing.purchased_at:
+            package_by_client[client_package.client_id] = client_package
+
+    result = []
+    for client in clients:
+        item = client_to_dict(client)
+        item["total_revenue"] = revenue_by_client.get(client.client_id, 0)
+
+        active_package = package_by_client.get(client.client_id)
+        if active_package is not None:
+            item["active_package"] = {
+                "name": active_package.package.name,
+                "sessions_remaining": active_package.sessions_remaining,
+                "total_sessions": active_package.package.total_sessions,
+            }
+        else:
+            item["active_package"] = None
+
+        result.append(item)
+
+    return jsonify(result)
 
 
 @clients_bp.route("/<int:client_id>", methods=["GET"])
@@ -121,7 +167,10 @@ def create_client():
     if not is_valid:
         return json_error(error_message, field="email")
 
-    new_client = Client(full_name=full_name.strip(), phone=phone.strip(),
+    # הטלפון נשמר מנורמל (05XXXXXXXX) ולא כמו שהוקלד - זהו מפתח
+    # החיפוש היחיד של הפורטל (identity/), וחייב להיות עקבי כדי
+    # שלקוחה קיימת עם מספר בפורמט אחר לא "תיעלם" מהחיפוש
+    new_client = Client(full_name=full_name.strip(), phone=normalize_phone(phone),
                         email=email, address=address)
 
     result = client_manager.insert_client(new_client)
@@ -159,7 +208,7 @@ def update_client(client_id):
         return json_error(error_message, field="email")
 
     existing.full_name = full_name.strip()
-    existing.phone = phone.strip()
+    existing.phone = normalize_phone(phone)
     existing.email = email
     existing.address = address
 
@@ -221,3 +270,75 @@ def search_clients():
         "match_count": len(results),
         "matches": results,
     })
+
+
+# ============================================================
+# הצהרת בריאות חתומה - אחסון מקומי בלבד, בלי S3 ובלי DocuSign.
+#
+# הקובץ נשמר בתיקייה מוגנת מחוץ ל-static/ (ראו database.py:
+# HEALTH_DECLARATIONS_DIR), עם שם קובץ אקראי (uuid4) שלא חושף
+# את שם הלקוחה או המזהה שלה. הורדה עוברת תמיד דרך ה-endpoint
+# המאומת למטה - לעולם לא URL ציבורי ישיר לקובץ.
+# ============================================================
+
+@clients_bp.route("/<int:client_id>/health-declaration", methods=["POST"])
+def upload_health_declaration(client_id):
+    """
+    מעלה הצהרת בריאות חתומה עבור לקוחה קיימת.
+    מצפה ל-multipart/form-data עם שדה בשם "file".
+    """
+    client = client_manager.get_client_by_id(client_id)
+    if client is None:
+        return json_error("הלקוח לא נמצא", status_code=404)
+
+    uploaded_file = request.files.get("file")
+    if uploaded_file is None or not uploaded_file.filename:
+        return json_error("יש לצרף קובץ", field="file")
+
+    extension = Path(uploaded_file.filename).suffix.lower()
+    if extension not in ALLOWED_HEALTH_DECLARATION_EXTENSIONS:
+        allowed = " / ".join(sorted(ALLOWED_HEALTH_DECLARATION_EXTENSIONS))
+        return json_error(f"סוג קובץ לא נתמך - האפשרויות הן: {allowed}", field="file")
+
+    # קריאת התוכן פעם אחת כדי לבדוק גודל לפני שמירה בפועל,
+    # ואז איפוס המצביע כדי ש-save() ישמור את כל הקובץ
+    uploaded_file.seek(0, 2)
+    size_bytes = uploaded_file.tell()
+    uploaded_file.seek(0)
+
+    if size_bytes > MAX_HEALTH_DECLARATION_SIZE_BYTES:
+        max_mb = MAX_HEALTH_DECLARATION_SIZE_BYTES // (1024 * 1024)
+        return json_error(f"הקובץ גדול מדי - עד {max_mb}MB", field="file")
+
+    # שם קובץ אקראי, לא תלוי בקלט המשתמש (לא path, לא שם מקורי) -
+    # מונע גם Path Traversal וגם דליפת פרטי לקוחה משם הקובץ בדיסק
+    stored_filename = f"{uuid.uuid4().hex}{extension}"
+    uploaded_file.save(HEALTH_DECLARATIONS_DIR / stored_filename)
+
+    if not client_manager.set_health_declaration(client_id, stored_filename):
+        return json_error(client_manager.last_error, status_code=400)
+
+    return jsonify(client_to_dict(client_manager.get_client_by_id(client_id)))
+
+
+@clients_bp.route("/<int:client_id>/health-declaration", methods=["GET"])
+def download_health_declaration(client_id):
+    """
+    מוריד את קובץ הצהרת הבריאות של לקוחה, למי שכבר מחובר למערכת.
+
+    הנתיב לעולם לא מגיע מהבקשה עצמה - רק מהרשומה השמורה במסד
+    עבור client_id הזה בדיוק, כדי שאי אפשר יהיה לבקש קובץ של
+    לקוחה אחרת ע"י ניחוש/שינוי שם קובץ.
+    """
+    client = client_manager.get_client_by_id(client_id)
+    if client is None or not client.health_declaration_file_path:
+        return json_error("לא נמצאה הצהרת בריאות עבור לקוח זה", status_code=404)
+
+    file_path = (HEALTH_DECLARATIONS_DIR / client.health_declaration_file_path).resolve()
+
+    # הגנת עומק: גם אם משהו ישתבש בנתיב השמור, לעולם לא משרתים
+    # קובץ שיצא מחוץ לתיקיית ההצהרות המוגנת
+    if HEALTH_DECLARATIONS_DIR.resolve() not in file_path.parents or not file_path.is_file():
+        return json_error("הקובץ לא נמצא", status_code=404)
+
+    return send_file(file_path)

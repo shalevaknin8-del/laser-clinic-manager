@@ -9,6 +9,11 @@
 #
 # שים לב: אין כאן שדה לתעודת זהות, ולא במקרה.
 # תעודת זהות מחולצת בקוד ולא נשלחת למודל חיצוני.
+#
+# requested_treatment (שלב 4, קביעת תור מהצ'אט): המודל רק מציע
+# שם טיפול "כמו שנשמע" - ההתאמה בפועל מול קטלוג הטיפולים האמיתי
+# היא דטרמיניסטית לגמרי (ראו chatbot/flows.py), כדי שהמודל לעולם
+# לא "יחליט" איזה טיפול או תור בפועל נקבע.
 # ============================================================
 
 from typing import Optional
@@ -28,20 +33,25 @@ class ExtractedInfo(BaseModel):
 
     claimed_date: Optional[str] = Field(
         default=None,
-        description="התאריך שהמשתמשת טענה, בפורמט YYYY-MM-DD",
+        description="התאריך שהמשתמשת טענה או ביקשה, בפורמט YYYY-MM-DD",
     )
 
     claimed_time: Optional[str] = Field(
         default=None,
-        description="השעה שהמשתמשת טענה, בפורמט HH:MM",
+        description="השעה שהמשתמשת טענה או ביקשה, בפורמט HH:MM",
+    )
+
+    requested_treatment: Optional[str] = Field(
+        default=None,
+        description="שם הטיפול שהמשתמשת ביקשה לקבוע, כפי שהופיע בהודעה",
     )
 
     intent: Optional[str] = Field(
         default=None,
         description=(
             "כוונת ההודעה. אחד מהערכים: check_appointment לבירור תור, "
-            "provide_name למסירת שם, confirm לאישור, deny לשלילה, "
-            "other לכל דבר אחר"
+            "book_appointment לבקשת קביעת תור חדש, provide_name למסירת שם, "
+            "confirm לאישור, deny לשלילה, other לכל דבר אחר"
         ),
     )
 
@@ -49,6 +59,7 @@ class ExtractedInfo(BaseModel):
 # הכוונות המוכרות. כל ערך אחר שיחזור מהמודל ייחשב other
 VALID_INTENTS = [
     "check_appointment",
+    "book_appointment",
     "provide_name",
     "confirm",
     "deny",
@@ -88,6 +99,12 @@ def sanitize_extracted(data):
         if len(claimed_time) != 5 or ":" not in claimed_time:
             claimed_time = None
 
+    requested_treatment = data.get("requested_treatment")
+    if requested_treatment is not None:
+        requested_treatment = str(requested_treatment).strip()
+        if not requested_treatment or len(requested_treatment) > 60:
+            requested_treatment = None
+
     intent = data.get("intent")
     if intent not in VALID_INTENTS:
         intent = "other"
@@ -96,5 +113,6 @@ def sanitize_extracted(data):
         name=name,
         claimed_date=claimed_date,
         claimed_time=claimed_time,
+        requested_treatment=requested_treatment,
         intent=intent,
     )
